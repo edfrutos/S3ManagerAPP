@@ -1,0 +1,74 @@
+# ===================================================================
+# Archivos de configuración y credenciales
+# ===================================================================
+# Archivo de variables de entorno
+.env
+
+# Carpeta de credenciales de AWS
+.aws/
+
+# ===================================================================
+# Artefactos de construcción y distribución
+# ===================================================================
+# Carpetas de construcción
+build/
+dist/
+
+# Archivos de distribución
+*.dmg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# ===================================================================
+# Archivos de caché y dependencias de Python
+# ===================================================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ===================================================================
+# Configuración del editor y herramientas
+# ===================================================================
+# Configuración de Visual Studio Code
+.vscode/
+
+# Diccionario personalizado de CSpell
+cspell.json
+
+# ===================================================================
+# Archivos específicos del sistema operativo macOS
+# ===================================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
