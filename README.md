@@ -47,14 +47,14 @@ python3 test_s3_functionality.py
 
 ## 🎯 Funcionalidades
 
-- ✅ Gestión completa de buckets S3
-- ✅ Descarga y eliminación selectiva de archivos
-- ✅ Verificación detallada de permisos
-- ✅ Configuración de credenciales integrada
-- ✅ Primera ejecución guiada
-- ✅ Interfaz gráfica moderna
-- ✅ Aplicación nativa de macOS
-- ✅ Instalador DMG
+- ✅ **Visualización y gestión de buckets S3**: Lista todos tus buckets y muestra información detallada.
+- ✅ **Creación de buckets**: Crea nuevos buckets directamente desde la aplicación, seleccionando la región de AWS.
+- ✅ **Borrado seguro de buckets**: Elimina buckets y todo su contenido con un diálogo de confirmación para evitar borrados accidentales.
+- ✅ **Gestión de archivos**: Descarga y eliminación selectiva de archivos dentro de un bucket.
+- ✅ **Verificación de permisos**: Comprueba los permisos de lectura, escritura, borrado y listado para cada bucket.
+- ✅ **Configuración de credenciales integrada**: Guarda de forma segura tus credenciales de AWS.
+- ✅ **Interfaz gráfica moderna**: Diseñada para ser intuitiva y fácil de usar en macOS.
+- ✅ **Aplicación nativa de macOS**: Empaquetada como una aplicación `.app` con instalador `.dmg`.
 
 ## 📞 Soporte
 

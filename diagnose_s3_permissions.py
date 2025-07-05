@@ -517,6 +517,96 @@ def delete_bucket_contents(s3_client, bucket_name, delete_bucket=False):
     
     return success
 
+def delete_bucket_and_contents(s3_client, bucket_name):
+    """
+    Vacía y elimina un bucket de S3, manejando el versionado.
+
+    Args:
+        s3_client: Cliente de boto3 S3.
+        bucket_name (str): El nombre del bucket a eliminar.
+
+    Returns:
+        tuple: (bool, str) donde el booleano indica el éxito y el string
+               es un mensaje de estado.
+    """
+    try:
+        # Paso 1: Vaciar el bucket. Esto es diferente si el bucket está versionado.
+        print(f"Iniciando el borrado del bucket '{bucket_name}' y todo su contenido.")
+        
+        # Comprobar si el versionado está activado
+        s3_resource = boto3.resource('s3')
+        bucket_versioning = s3_resource.BucketVersioning(bucket_name)
+        
+        if bucket_versioning.status == 'Enabled':
+            print("   - El bucket tiene el versionado activado. Eliminando todas las versiones de objetos y marcadores de borrado.")
+            bucket = s3_resource.Bucket(bucket_name)
+            bucket.object_versions.delete()
+        else:
+            print("   - El bucket no tiene el versionado activado. Eliminando todos los objetos.")
+            bucket = s3_resource.Bucket(bucket_name)
+            bucket.objects.all().delete()
+            
+        print("   ✓ Contenido del bucket eliminado con éxito.")
+
+        # Paso 2: Eliminar el bucket ahora que está vacío.
+        print("   - Intentando eliminar el bucket...")
+        s3_client.delete_bucket(Bucket=bucket_name)
+        print(f"   ✓ Bucket '{bucket_name}' eliminado con éxito.")
+        
+        return True, f"El bucket '{bucket_name}' y todo su contenido han sido eliminados."
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        error_message = e.response.get("Error", {}).get("Message")
+        print(f"   ✗ Error de cliente AWS al eliminar el bucket: {error_code} - {error_message}")
+        return False, f"Error de AWS ({error_code}): {error_message}"
+    except Exception as e:
+        print(f"   ✗ Error inesperado al eliminar el bucket: {str(e)}")
+        return False, f"Error inesperado: {str(e)}"
+
+def create_s3_bucket(bucket_name, region='us-east-1'):
+    """
+    Crea un nuevo bucket de S3 en la región especificada.
+
+    :param bucket_name: Nombre del bucket a crear.
+    :param region: Región de AWS donde se creará el bucket.
+    :return: Tupla (bool, str) indicando éxito y mensaje.
+    """
+    try:
+        s3_client = boto3.client('s3', region_name=region)
+        
+        # us-east-1 es un caso especial y no requiere el LocationConstraint
+        if region == 'us-east-1':
+            s3_client.create_bucket(Bucket=bucket_name)
+        else:
+            location = {'LocationConstraint': region}
+            s3_client.create_bucket(
+                Bucket=bucket_name,
+                CreateBucketConfiguration=location
+            )
+        
+        # Esperar a que el bucket exista para evitar race conditions
+        waiter = s3_client.get_waiter('bucket_exists')
+        waiter.wait(Bucket=bucket_name)
+        
+        return True, f"¡Éxito! El bucket '{bucket_name}' se ha creado correctamente en la región '{region}'."
+        
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        if error_code == 'BucketAlreadyOwnedByYou':
+            return True, f"INFO: El bucket '{bucket_name}' ya existe y te pertenece."
+        elif error_code == 'BucketAlreadyExists':
+            return False, f"Error: El nombre de bucket '{bucket_name}' ya está en uso a nivel global en AWS. Prueba con otro nombre."
+        elif error_code == 'InvalidBucketName':
+            return False, f"Error: El nombre '{bucket_name}' no es válido. Revisa las reglas de nomenclatura de S3."
+        elif error_code == 'IllegalLocationConstraintException':
+            return False, f"Error: La región '{region}' parece no ser válida o tener algún problema. Verifica la región seleccionada."
+        else:
+            return False, f"Error inesperado de AWS al crear el bucket: {str(e)}"
+    except Exception as e:
+        return False, f"Error inesperado al crear el bucket: {str(e)}"
+
+
 def show_menu(s3_client, buckets):
     """Muestra un menú interactivo para operaciones de mantenimiento"""
     while True:

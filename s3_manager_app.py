@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,
     QTextEdit, QProgressBar, QComboBox, QCheckBox, QFileDialog,
     QMessageBox, QSplitter, QGroupBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QStatusBar, QMenuBar, QToolBar, QLineEdit, QDialog
+    QHeaderView, QStatusBar, QMenuBar, QToolBar, QLineEdit, QDialog, QInputDialog, QDialogButtonBox
 )
 from PySide6.QtCore import Qt, QThread, Signal as pyqtSignal, QTimer, QSize
 from PySide6.QtGui import QIcon, QFont, QPixmap, QAction
@@ -29,7 +29,8 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from diagnose_s3_permissions import (
     check_aws_credentials, test_s3_connection, list_bucket_contents,
     check_bucket_permissions, check_bucket_configuration,
-    download_selected_files, delete_selected_files
+    download_selected_files, delete_selected_files, delete_bucket_and_contents,
+    create_s3_bucket
 )
 
 # Importar gestor de credenciales
@@ -52,6 +53,7 @@ class S3Worker(QThread):
         self.selected_files = []
         self.local_path = None
         self.s3_client = None
+        self.region = None
         
     def set_operation(self, operation, **kwargs):
         """Configura la operación a realizar"""
@@ -59,6 +61,7 @@ class S3Worker(QThread):
         self.bucket_name = kwargs.get('bucket_name')
         self.selected_files = kwargs.get('selected_files', [])
         self.local_path = kwargs.get('local_path')
+        self.region = kwargs.get('region')
         
     def run(self):
         """Ejecuta la operación en el hilo separado"""
@@ -73,6 +76,10 @@ class S3Worker(QThread):
                 self._delete_files()
             elif self.operation == 'check_permissions':
                 self._check_permissions()
+            elif self.operation == 'delete_bucket':
+                self._delete_bucket()
+            elif self.operation == 'create_bucket':
+                self._create_bucket()
                 
         except Exception as e:
             self.log_message.emit(f"Error en operación: {str(e)}", "error")
@@ -188,6 +195,78 @@ class S3Worker(QThread):
         except Exception as e:
             self.operation_completed.emit(False, str(e))
 
+    def _delete_bucket(self):
+        """Llama a la función de borrado de bucket y emite el resultado."""
+        try:
+            if not self.s3_client:
+                self.s3_client = boto3.client('s3')
+            
+            success, message = delete_bucket_and_contents(
+                self.s3_client,
+                self.bucket_name
+            )
+            self.operation_completed.emit(success, message)
+            
+        except Exception as e:
+            self.operation_completed.emit(False, str(e))
+
+    def _create_bucket(self):
+        """Crea un nuevo bucket."""
+        try:
+            self.log_message.emit(f"WORKER: Intentando crear bucket '{self.bucket_name}' en región '{self.region}'...", "info")
+            if not self.s3_client:
+                self.s3_client = boto3.client('s3')
+            
+            success, message = create_s3_bucket(
+                self.bucket_name,
+                self.region
+            )
+            self.operation_completed.emit(success, message)
+            
+        except Exception as e:
+            self.log_message.emit(f"Error en _create_bucket: {str(e)}", "error")
+            self.operation_completed.emit(False, str(e))
+
+class CreateBucketDialog(QDialog):
+    """Diálogo para crear un nuevo bucket."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Crear Nuevo Bucket S3")
+        self.setMinimumWidth(400)
+
+        layout = QVBoxLayout()
+
+        # Nombre del bucket
+        layout.addWidget(QLabel("Nombre del nuevo bucket:"))
+        self.bucket_name_input = QLineEdit()
+        self.bucket_name_input.setPlaceholderText("ej: mi-bucket-unico-123")
+        layout.addWidget(self.bucket_name_input)
+
+        # Selección de región
+        layout.addWidget(QLabel("Región de AWS:"))
+        self.region_combo = QComboBox()
+        # Lista de regiones comunes. Se puede expandir.
+        regions = [
+            'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
+            'af-south-1', 'ap-east-1', 'ap-northeast-1', 'ap-northeast-2', 'ap-south-1', 
+            'ap-southeast-1', 'ap-southeast-2', 'ca-central-1', 'eu-central-1', 'eu-north-1',
+            'eu-south-1', 'eu-west-1', 'eu-west-2', 'eu-west-3', 'me-south-1', 'sa-east-1'
+        ]
+        self.region_combo.addItems(regions)
+        layout.addWidget(self.region_combo)
+
+        # Botones
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+        self.setLayout(layout)
+
+    def get_bucket_details(self):
+        """Devuelve el nombre y la región del bucket."""
+        return self.bucket_name_input.text().strip(), self.region_combo.currentText()
+
 class BucketTab(QWidget):
     """Pestaña para gestión de buckets"""
     
@@ -209,6 +288,10 @@ class BucketTab(QWidget):
         refresh_btn = QPushButton("🔄 Actualizar")
         refresh_btn.clicked.connect(self.refresh_buckets)
         header_layout.addWidget(refresh_btn)
+
+        create_btn = QPushButton("➕ Crear Bucket")
+        create_btn.clicked.connect(self.open_create_bucket_dialog)
+        header_layout.addWidget(create_btn)
         header_layout.addStretch()
         
         layout.addLayout(header_layout)
@@ -252,6 +335,13 @@ class BucketTab(QWidget):
         self.files_btn.setEnabled(False)
         button_layout.addWidget(self.files_btn)
         
+        # Botón para eliminar el bucket seleccionado
+        self.delete_bucket_btn = QPushButton("Eliminar Bucket")
+        self.delete_bucket_btn.setEnabled(False)
+        self.delete_bucket_btn.setStyleSheet("color: red;")
+        self.delete_bucket_btn.clicked.connect(self.confirm_delete_bucket)
+        button_layout.addWidget(self.delete_bucket_btn)
+        
         button_layout.addStretch()
         layout.addLayout(button_layout)
         
@@ -288,6 +378,7 @@ Región: Detectando...
         # Habilitar botones
         self.permissions_btn.setEnabled(True)
         self.files_btn.setEnabled(True)
+        self.delete_bucket_btn.setEnabled(True)
         
         # Guardar bucket seleccionado
         self.parent.selected_bucket = bucket['Name']
@@ -352,9 +443,51 @@ Región: {region}
     
     def view_files(self):
         """Cambia a la pestaña de archivos"""
-        if hasattr(self.parent, 'selected_bucket'):
-            self.parent.tab_widget.setCurrentIndex(1)  # Cambiar a pestaña de archivos
-            self.parent.files_tab.load_bucket_files(self.parent.selected_bucket)
+        selected_items = self.bucket_list.selectedItems()
+        if selected_items:
+            self.parent.switch_to_files_tab()
+
+    def confirm_delete_bucket(self):
+        """Muestra un diálogo de confirmación muy seguro para eliminar un bucket."""
+        if not hasattr(self.parent, 'selected_bucket') or not self.parent.selected_bucket:
+            self.parent.log_tab.add_log("Intento de borrado sin un bucket seleccionado.", "warning")
+            return
+
+        bucket_name = self.parent.selected_bucket
+
+        title = "⚠️ Confirmación de Borrado Irreversible"
+        label = (f"Está a punto de eliminar el bucket <b>{bucket_name}</b> y todo su contenido.<br>"
+                 f"Esta acción no se puede deshacer.<br><br>"
+                 f"Para confirmar, por favor escriba <b>{bucket_name}</b> en el campo de abajo:")
+        
+        text, ok = QInputDialog.getText(self, title, label, QLineEdit.EchoMode.Normal, "")
+        
+        if ok:
+            if text.strip() == bucket_name:
+                self.delete_bucket(bucket_name)
+            else:
+                QMessageBox.critical(self, "Error de Confirmación", 
+                                     "El nombre del bucket no coincide. Borrado cancelado.")
+
+    def delete_bucket(self, bucket_name):
+        """Inicia el proceso de borrado del bucket en un worker thread."""
+        self.parent.log_tab.add_log(f"Iniciando borrado del bucket {bucket_name}...", "info")
+        self.parent.start_operation('delete_bucket', bucket_name=bucket_name)
+
+    def open_create_bucket_dialog(self):
+        """Abre el diálogo para crear un nuevo bucket."""
+        dialog = CreateBucketDialog(self)
+        if dialog.exec():
+            bucket_name, region = dialog.get_bucket_details()
+            if bucket_name:
+                self.create_bucket(bucket_name, region)
+            else:
+                QMessageBox.warning(self, "Nombre Requerido", "El nombre del bucket no puede estar vacío.")
+
+    def create_bucket(self, bucket_name, region):
+        """Inicia la creación de un nuevo bucket."""
+        self.parent.log_tab.add_log(f"Iniciando creación del bucket '{bucket_name}' en la región '{region}'...", "info")
+        self.parent.start_operation('create_bucket', bucket_name=bucket_name, region=region)
 
 class FilesTab(QWidget):
     """Pestaña para gestión de archivos"""
@@ -781,6 +914,12 @@ class S3ManagerApp(QMainWindow):
         self.worker.bucket_list_ready.connect(self.bucket_tab.update_bucket_list)
         self.worker.file_list_ready.connect(self.files_tab.update_files_table)
         self.worker.log_message.connect(self.log_tab.add_log)
+
+    def switch_to_files_tab(self):
+        """Cambia a la pestaña de archivos y carga su contenido."""
+        if self.selected_bucket:
+            self.tab_widget.setCurrentIndex(1)  # 1 es el índice de la pestaña de archivos
+            self.files_tab.load_bucket_files(self.selected_bucket)
     
     def load_saved_credentials(self):
         """Carga las credenciales guardadas al inicio"""
@@ -832,29 +971,38 @@ class S3ManagerApp(QMainWindow):
         self.log_tab.add_log(message, "info")
     
     def operation_completed(self, success, message):
-        """Maneja la finalización de operaciones"""
+        """Maneja la finalización de operaciones de forma centralizada."""
         self.progress_bar.setVisible(False)
-        
+
         if success:
-            # Si es un mensaje de verificación de permisos, formatearlo especialmente
-            if "Resultados de verificación" in message:
+            self.status_bar.showMessage("✅ Operación completada")
+
+            # Caso 1: Borrado de bucket exitoso
+            if "El bucket" in message and "han sido eliminados" in message:
+                self.log_tab.add_log(message, "success")
+                QMessageBox.information(self, "Éxito", message)
+                self.bucket_tab.refresh_buckets()
+            
+            # Caso 2: Borrado de archivos exitoso
+            elif "eliminaron" in message and self.files_tab.current_bucket:
+                self.log_tab.add_log(message, "success")
+                self.files_tab.refresh_files()
+
+            # Caso 3: Verificación de permisos
+            elif "Resultados de verificación" in message:
                 self.log_tab.add_log("Verificación de permisos completada:", "success")
                 for line in message.split('\n'):
-                    if line.strip():  # Ignorar líneas vacías
+                    if line.strip():
                         self.log_tab.add_log(f"  {line}", "info")
+            
+            # Otros casos de éxito
             else:
                 self.log_tab.add_log(message, "success")
-            
-            self.status_bar.showMessage("✅ Operación completada")
-            
-            # Actualizar archivos si fue eliminación
-            if "eliminaron" in message and self.files_tab.current_bucket:
-                QTimer.singleShot(1000, self.files_tab.refresh_files)
         else:
+            # Manejo de errores
             self.log_tab.add_log(f"Error: {message}", "error")
             self.status_bar.showMessage("❌ Error en operación")
-            
-            QMessageBox.critical(self, "Error", f"Error en la operación:\n{message}")
+            QMessageBox.critical(self, "Error en la Operación", message)
     
     def refresh_all(self):
         """Actualiza toda la información"""
@@ -1053,7 +1201,7 @@ def main():
     
     # Configurar aplicación
     app.setApplicationName("S3 Manager")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion("1.1.0")
     app.setOrganizationName("Sistema de Catálogo de Tablas")
     
     # Crear y mostrar ventana principal
