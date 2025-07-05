@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 import shutil
 import tempfile
+import time
 
 def run_command(command, cwd=None):
     """Ejecuta un comando y muestra la salida en tiempo real"""
@@ -99,15 +100,31 @@ Para instalar:
             print("❌ Error creando DMG temporal")
             return False
         
-        # Montar DMG temporal
+        # Montar DMG temporal y capturar el dispositivo
         mount_point = "/Volumes/S3Manager"
-        mount_command = f"""
-        hdiutil attach "{temp_dmg}" -mountpoint "{mount_point}"
-        """
-        if not run_command(mount_command):
+        mount_command = f'hdiutil attach "{temp_dmg}" -mountpoint "{mount_point}"'
+        print(f"🔧 Ejecutando: {mount_command}")
+        result = subprocess.run(mount_command, shell=True, capture_output=True, text=True)
+
+        if result.returncode != 0:
             print("❌ Error montando DMG")
+            print(result.stdout + result.stderr)
             return False
-        
+
+        print(result.stdout)
+        device_path = None
+        for line in result.stdout.strip().split('\n'):
+            if mount_point in line:
+                device_path = line.split()[0]
+                break
+
+        if not device_path:
+            print("❌ No se pudo determinar la ruta del dispositivo montado. Se usará el punto de montaje como fallback.")
+            detach_target = f'\"{mount_point}\"'
+        else:
+            print(f"✅ Volumen montado en el dispositivo: {device_path}")
+            detach_target = device_path
+
         try:
             # Copiar archivos al DMG
             print("\n3️⃣ Copiando archivos...")
@@ -134,8 +151,6 @@ Para instalar:
                         set position of item "S3Manager.app" of container window to {120, 150}
                         set position of item "Applications" of container window to {380, 150}
                         set position of item "README.txt" of container window to {250, 300}
-                        close
-                        open
                         update without registering applications
                         delay 2
                         close
@@ -146,9 +161,34 @@ Para instalar:
             run_command(configure_view_command)
             
         finally:
-            # Desmontar DMG
+            # Pausa final para asegurar que el Finder ha terminado
+            print("\n⏸️ Esperando 5 segundos para que el Finder libere los recursos...")
+            time.sleep(5)
+
+            # Desmontar DMG usando la ruta del dispositivo para mayor fiabilidad
             print("\n5️⃣ Desmontando DMG temporal...")
-            run_command(f'hdiutil detach "{mount_point}"')
+            detached_successfully = False
+            max_retries = 5
+            for i in range(max_retries):
+                print(f"   Intento de desmontaje {i + 1}/{max_retries}...")
+                detach_command = f'hdiutil detach {detach_target} -force'
+                
+                result = subprocess.run(detach_command, shell=True, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    print("   ✅ Volumen desmontado con éxito.")
+                    detached_successfully = True
+                    break
+                
+                error_message = result.stderr.strip() or result.stdout.strip()
+                print(f"   ⚠️ Fallo al desmontar: {error_message}")
+                if i < max_retries - 1:
+                    print("   Esperando 3 segundos antes de reintentar...")
+                    time.sleep(3)
+            
+            if not detached_successfully:
+                print("❌ Error: No se pudo desmontar el volumen después de varios intentos.")
+                return False
         
         # Convertir DMG temporal a DMG final comprimido
         print("\n6️⃣ Creando DMG final comprimido...")
