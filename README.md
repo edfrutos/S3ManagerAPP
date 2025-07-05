@@ -62,6 +62,6 @@ Para problemas o sugerencias, revisa la documentación en `docs/`.
 
 ---
 
-**Desarrollado por**: EDF Developer  
-**Versión**: 1.1.0  
+**Desarrollado por**: EDF Developer
+**Versión**: 1.1.0
 **Licencia**: MIT
