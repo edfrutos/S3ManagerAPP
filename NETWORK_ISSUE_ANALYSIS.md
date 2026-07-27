@@ -46,8 +46,7 @@ ping s3.amazonaws.com
 - ✅ **Linters configurados** - FUNCIONANDO
 
 ### 2. **Scripts Mejorados Creados**
-- ✅ `diagnose_s3_permissions.py` - Versión original mejorada
-- ✅ `diagnose_s3_permissions_fixed.py` - Versión con configuración AWS CLI
+- ✅ `diagnose_s3_permissions.py` - Toolkit de diagnóstico (incluye timeout/retries en el cliente S3)
 - ✅ `activate_env.sh` - Script de activación del entorno
 
 ### 3. **Configuración del Proyecto**
