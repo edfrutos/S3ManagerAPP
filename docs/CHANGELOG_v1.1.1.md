@@ -1,6 +1,6 @@
 # Changelog S3Manager v1.1.1
 
-## 🔐 Versión 1.1.1 - Persistencia de Credenciales (2025-01-XX)
+## 🔐 Versión 1.1.1 - Persistencia de Credenciales (2025-07-05)
 
 ### ✨ Nuevas Funcionalidades
 - **Sistema de Persistencia de Credenciales**: Las credenciales AWS ahora se guardan de forma segura
@@ -98,6 +98,6 @@ PySide6>=6.4.0
 ---
 
 **Desarrollado por**: EDF Developer  
-**Fecha**: Enero 2025  
+**Fecha**: Julio 2025  
 **Versión**: 1.1.1  
 **Estado**: ✅ Producción

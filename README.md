@@ -51,6 +51,8 @@ python3 test_s3_functionality.py
 - [Reporte de Pruebas](docs/TESTING_FINAL_REPORT_v1.1.md)
 - [Historial de Cambios v1.1.1](docs/CHANGELOG_v1.1.1.md)
 - [Historial de Cambios v1.1.0](docs/CHANGELOG_v1.1.md)
+- [Configuración del Entorno de Desarrollo](DEVELOPMENT.md)
+- [Análisis de Problema de Conectividad AWS](NETWORK_ISSUE_ANALYSIS.md)
 
 ## 🎯 Funcionalidades
 

@@ -1201,7 +1201,7 @@ def main():
     
     # Configurar aplicación
     app.setApplicationName("S3 Manager")
-    app.setApplicationVersion("1.1.0")
+    app.setApplicationVersion("1.1.1")
     app.setOrganizationName("Sistema de Catálogo de Tablas")
     
     # Crear y mostrar ventana principal
