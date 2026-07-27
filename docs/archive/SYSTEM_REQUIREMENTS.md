@@ -1,3 +1,5 @@
+> ⚠️ Documento archivado y obsoleto. Versión vigente: [../SYSTEM_REQUIREMENTS_v1.1.md](../SYSTEM_REQUIREMENTS_v1.1.md)
+
 # Requisitos del Sistema - S3 Manager v1.1.0
 
 ## 📋 Requisitos Mínimos

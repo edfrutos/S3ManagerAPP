@@ -1,3 +1,5 @@
+> ⚠️ Documento archivado y obsoleto. Versión vigente: [../TESTING_FINAL_REPORT_v1.1.md](../TESTING_FINAL_REPORT_v1.1.md)
+
 # Resumen de Pruebas - S3 Manager v1.1.0
 
 ## 📊 Estado General de Pruebas
