@@ -52,7 +52,14 @@ def test_s3_connection():
     print("\n2. Probando conexión con S3...")
     
     try:
-        s3_client = boto3.client('s3')
+        s3_client = boto3.client(
+            's3',
+            config=boto3.session.Config(
+                retries=dict(max_attempts=2),
+                connect_timeout=10,
+                read_timeout=10,
+            ),
+        )
         response = s3_client.list_buckets()
         
         print("   ✓ Conexión exitosa con S3")
