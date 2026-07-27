@@ -1,3 +1,5 @@
+> ⚠️ Documento archivado y obsoleto. Versión vigente: [../README_S3_Manager_v1.1.md](../README_S3_Manager_v1.1.md)
+
 # S3 Manager - Aplicación de Escritorio macOS
 
 Una aplicación moderna de escritorio para gestionar buckets de Amazon S3 con interfaz gráfica intuitiva.
