@@ -9,9 +9,9 @@ import sys
 import os
 import time
 from pathlib import Path
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtTest import QTest
-from PyQt6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QApplication
+from PySide6.QtTest import QTest
+from PySide6.QtCore import Qt, QTimer
 
 from s3_manager_app import S3ManagerApp
 

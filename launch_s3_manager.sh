@@ -14,10 +14,10 @@ if [ -d "$DIR/../../venv310" ]; then
 fi
 
 # Verificar dependencias
-python3 -c "import PyQt6, boto3" 2>/dev/null
+python3 -c "import PySide6, boto3" 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "❌ Dependencias faltantes. Instalando..."
-    pip install PyQt6 boto3
+    pip install PySide6 boto3
 fi
 
 # Ejecutar aplicación
