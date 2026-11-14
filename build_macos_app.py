@@ -11,6 +11,8 @@ import subprocess
 import shutil
 from pathlib import Path
 
+from app_version import __version__
+
 def create_app_bundle():
     """Crea el bundle de la aplicación macOS"""
     
@@ -103,9 +105,9 @@ def create_info_plist(app_path):
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>__APP_VERSION__</string>
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>__APP_VERSION__</string>
     <key>LSMinimumSystemVersion</key>
     <string>10.15.0</string>
     <key>NSHighResolutionCapable</key>
@@ -130,7 +132,7 @@ def create_info_plist(app_path):
         </dict>
     </array>
 </dict>
-</plist>"""
+</plist>""".replace("__APP_VERSION__", __version__)
     
     info_plist_path = app_path / "Contents" / "Info.plist"
     

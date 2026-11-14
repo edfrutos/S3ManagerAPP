@@ -33,7 +33,7 @@ make test                                                          # ejecuta 3 s
 
 Importante: la mayoría de tests son de integración contra AWS real (credenciales activas y buckets concretos, p. ej. `efjdefrutos-com`) o contra la GUI/`.app` construida; no son unitarios aislados. `TEST_MODE=1` hace que `AWSCredentialsManager` no escriba en el keyring.
 
-Lint/tipos (configurados en `pyproject.toml` / `mypy.ini`, sin hook automático): `ruff check .`, `black --line-length 79 .`, `mypy .`. `mypy.ini` es más permisivo que la sección `[tool.mypy]` de `pyproject.toml` y tiene prioridad al ejecutar `mypy` desde la raíz.
+Lint/tipos (configurados en `pyproject.toml`, sin hook automático; no instalados en `venv310`): `ruff check .`, `black --line-length 79 .`, `mypy <archivos>`. La config de mypy es permisiva (sin exigir anotaciones); hay ~14 errores previos.
 
 ## Arquitectura
 
@@ -51,7 +51,7 @@ Todo el código vive en módulos planos en la raíz (sin paquete):
   - Contraseña maestra opcional: clave derivada (PBKDF2) cacheada solo en memoria en `_session_key`; el secret en keyring se guarda cifrado con Fernet. Al arrancar, `ensure_unlocked()` pide la contraseña antes de cargar credenciales.
   - Exportar/importar perfiles a archivo cifrado con contraseña.
 - **`crypto_utils.py`** — Fernet + PBKDF2-HMAC-SHA256 (600k iteraciones). `derive_key` es caro: derivar una vez por sesión y usar `encrypt_with_key`/`decrypt_with_key`; `encrypt_with_password` antepone el salt de 16 bytes al token.
-- **Empaquetado** — `build_macos_app.py` (PyInstaller `--windowed --onedir`, Info.plist propio, `icon.icns`), `create_dmg_installer.py` / `create_simple_dmg.py`. La versión (`1.1.1`) está duplicada en `pyproject.toml`, `main()` de `s3_manager_app.py` (`setApplicationVersion`), `show_about` y `README.md`: mantenerlas sincronizadas.
+- **Empaquetado** — `build_macos_app.py` (PyInstaller `--windowed --onedir`, Info.plist propio, `icon.icns`), `create_dmg_installer.py` / `create_simple_dmg.py`. La versión vive en `app_version.py` (`__version__`), que usan la GUI y el `Info.plist` de `build_macos_app.py`; `pyproject.toml` y `README.md` la repiten a mano: mantenerlas sincronizadas.
 
 ## Notas
 

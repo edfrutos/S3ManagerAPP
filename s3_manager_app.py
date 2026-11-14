@@ -35,6 +35,7 @@ from diagnose_s3_permissions import (
 
 # Importar gestor de credenciales
 from aws_credentials_manager import AWSCredentialsManager
+from app_version import __version__
 
 # Regiones AWS habituales, usadas tanto al crear buckets como al
 # configurar la región por defecto de un perfil.
@@ -1268,10 +1269,10 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
         QMessageBox.about(
             self,
             "Acerca de S3 Manager",
-            """
+            f"""
             <h3>S3 Manager</h3>
             <p>Aplicación de gestión de buckets AWS S3</p>
-            <p><b>Versión:</b> 1.0.0</p>
+            <p><b>Versión:</b> {__version__}</p>
             <p><b>Autor:</b> EDF Developer</p>
             <p><b>Fecha:</b> 2025</p>
             
@@ -1283,6 +1284,7 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
                 <li>✅ Eliminación selectiva de archivos</li>
                 <li>✅ Interfaz gráfica moderna</li>
                 <li>✅ Logs detallados</li>
+                <li>✅ Perfiles AWS múltiples y contraseña maestra</li>
             </ul>
             """
         )
@@ -1585,7 +1587,7 @@ def main():
     
     # Configurar aplicación
     app.setApplicationName("S3 Manager")
-    app.setApplicationVersion("1.1.1")
+    app.setApplicationVersion(__version__)
     app.setOrganizationName("Sistema de Catálogo de Tablas")
     
     # Crear y mostrar ventana principal

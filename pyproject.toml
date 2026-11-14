@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "s3-manager"
-version = "1.1.1"
+version = "1.2.0"  # mantener igual que app_version.__version__
 description = "Gestor de archivos S3 con interfaz gráfica"
 authors = [
     {name = "Sistema de Catálogo de Tablas", email = "admin@example.com"}
@@ -28,26 +28,27 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 
 [tool.mypy]
+# Configuración única de mypy (antes duplicada en mypy.ini). Permisiva a
+# propósito: el código apenas tiene anotaciones de tipos.
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
 check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
+disallow_untyped_decorators = false
+no_implicit_optional = false
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
-strict_equality = true
+strict_equality = false
 
 [[tool.mypy.overrides]]
 module = [
     "boto3.*",
     "botocore.*",
     "PySide6.*",
-    "psutil.*",
     "keyring.*",
 ]
 ignore_missing_imports = true
