@@ -1117,31 +1117,19 @@ class S3ManagerApp(QMainWindow):
             self.files_tab.refresh_files()
     
     def check_first_run(self):
-        """Verifica si es la primera ejecución y muestra configuración si es necesario"""
-        # Verificar si existe archivo de primera ejecución
-        first_run_file = Path(__file__).parent / "first_run"
+        """Muestra la configuración inicial en la primera ejecución o si
+        no hay credenciales. La marca vive en el HOME del usuario (nunca
+        dentro de la .app, que está firmada y puede ser de solo lectura)."""
         app_first_run = Path.home() / ".s3manager_first_run"
-        
-        # Verificar si hay credenciales usando el gestor
         has_credentials = AWSCredentialsManager.has_credentials()
-        
-        if first_run_file.exists() or not app_first_run.exists() or not has_credentials:
-            # Es primera ejecución o no hay credenciales
+
+        if not app_first_run.exists() or not has_credentials:
             QTimer.singleShot(500, self.show_first_run_dialog)
-            
-            # Eliminar archivo de primera ejecución si existe
-            if first_run_file.exists():
-                try:
-                    first_run_file.unlink()
-                except:
-                    pass
-            
-            # Crear archivo de marca para futuras ejecuciones
             try:
                 app_first_run.touch()
-            except:
+            except OSError:
                 pass
-    
+
     def show_first_run_dialog(self):
         """Muestra el diálogo de primera ejecución"""
         reply = QMessageBox.question(
