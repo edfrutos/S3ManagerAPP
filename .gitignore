@@ -73,3 +73,32 @@ cspell.json
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# ===================================================================
+# Herramientas locales (agentes IA, grafo de conocimiento)
+# ===================================================================
+.agents/
+.augment/
+.claude/
+.grok/
+.trae/
+skills/
+skills-lock.json
+graphify-out/
+
+# Icono personalizado de carpeta de macOS (archivo "Icon\r")
+Icon?
+
+# ===================================================================
+# Copias locales no versionadas
+# ===================================================================
+# Variantes huérfanas del script de diagnóstico (no referenciadas)
+diagnose_s3_permissions_fixed.py
+diagnose_s3_permissions_working.py
+# Copias sueltas de docs ya archivadas en docs/archive/
+docs/README_S3_Manager.md
+docs/SYSTEM_REQUIREMENTS.md
+docs/TESTING_FINAL_REPORT.md
+docs/TESTING_SUMMARY_v1.1.md
+# Imagen suelta no usada por la app ni el build
+S3Manager.png

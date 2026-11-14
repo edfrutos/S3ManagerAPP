@@ -36,6 +36,15 @@ from diagnose_s3_permissions import (
 # Importar gestor de credenciales
 from aws_credentials_manager import AWSCredentialsManager
 
+# Regiones AWS habituales, usadas tanto al crear buckets como al
+# configurar la región por defecto de un perfil.
+AWS_REGIONS = [
+    'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
+    'af-south-1', 'ap-east-1', 'ap-northeast-1', 'ap-northeast-2', 'ap-south-1',
+    'ap-southeast-1', 'ap-southeast-2', 'ca-central-1', 'eu-central-1', 'eu-north-1',
+    'eu-south-1', 'eu-west-1', 'eu-west-2', 'eu-west-3', 'me-south-1', 'sa-east-1'
+]
+
 class S3Worker(QThread):
     """Worker thread para operaciones S3 que no bloqueen la UI"""
     
@@ -45,6 +54,8 @@ class S3Worker(QThread):
     bucket_list_ready = pyqtSignal(list)
     file_list_ready = pyqtSignal(list)
     log_message = pyqtSignal(str, str)  # mensaje, tipo (info, warning, error)
+    # bucket, {'region': str, 'permissions': dict, 'encryption': bool}
+    permissions_ready = pyqtSignal(str, dict)
     
     def __init__(self):
         super().__init__()
@@ -91,7 +102,11 @@ class S3Worker(QThread):
             self.s3_client, buckets = test_s3_connection()
             if self.s3_client:
                 self.bucket_list_ready.emit(buckets)
-                self.log_message.emit(f"Se encontraron {len(buckets)} buckets", "info")
+                # operation_completed oculta la barra de progreso y
+                # registra el mensaje en el log.
+                self.operation_completed.emit(
+                    True, f"Se encontraron {len(buckets)} buckets"
+                )
             else:
                 self.operation_completed.emit(False, "No se pudo conectar a S3")
         except Exception as e:
@@ -105,7 +120,10 @@ class S3Worker(QThread):
             
             objects = list_bucket_contents(self.s3_client, self.bucket_name)
             self.file_list_ready.emit(objects)
-            self.log_message.emit(f"Se encontraron {len(objects)} archivos en {self.bucket_name}", "info")
+            self.operation_completed.emit(
+                True,
+                f"Se encontraron {len(objects)} archivos en {self.bucket_name}",
+            )
             
         except Exception as e:
             self.operation_completed.emit(False, str(e))
@@ -159,39 +177,57 @@ class S3Worker(QThread):
             self.operation_completed.emit(False, str(e))
     
     def _check_permissions(self):
-        """Verifica permisos del bucket"""
+        """Verifica permisos, región y cifrado del bucket (una sola vez)."""
         try:
             if not self.s3_client:
                 self.s3_client = boto3.client('s3')
-            
-            # Obtener permisos y configuración
-            permissions = check_bucket_permissions(self.s3_client, self.bucket_name)
-            
-            # Obtener región del bucket
-            location = self.s3_client.get_bucket_location(Bucket=self.bucket_name)
+
+            permissions = check_bucket_permissions(
+                self.s3_client, self.bucket_name
+            )
+
+            location = self.s3_client.get_bucket_location(
+                Bucket=self.bucket_name
+            )
             region = location['LocationConstraint'] or 'us-east-1'
-            
-            # Crear mensaje detallado
+
+            try:
+                self.s3_client.get_bucket_encryption(Bucket=self.bucket_name)
+                encryption = True
+            except ClientError:
+                encryption = False
+
+            # Resultado estructurado para el panel de información del bucket
+            self.permissions_ready.emit(
+                self.bucket_name,
+                {
+                    'region': region,
+                    'permissions': permissions,
+                    'encryption': encryption,
+                },
+            )
+
+            def mark(ok):
+                return '✅' if ok else '❌'
+
+            def status(ok):
+                return 'OK' if ok else 'Error'
+
+            # "Resultados de verificación" lo usa operation_completed de la UI
             details = [
                 "📊 Resultados de verificación:",
                 f"🌎 Región: {region}",
                 "\n🔐 Permisos:",
-                f"{'✅' if permissions['read'] else '❌'} Lectura: {'OK' if permissions['read'] else 'Error'}",
-                f"{'✅' if permissions['write'] else '❌'} Escritura: {'OK' if permissions['write'] else 'Error'}",
-                f"{'✅' if permissions['delete'] else '❌'} Eliminación: {'OK' if permissions['delete'] else 'Error'}",
-                f"{'✅' if permissions['list'] else '❌'} Listado: {'OK' if permissions['list'] else 'Error'}"
+                f"{mark(permissions['read'])} Lectura: {status(permissions['read'])}",
+                f"{mark(permissions['write'])} Escritura: {status(permissions['write'])}",
+                f"{mark(permissions['delete'])} Eliminación: {status(permissions['delete'])}",
+                f"{mark(permissions['list'])} Listado: {status(permissions['list'])}",
+                "\n🔒 Encriptación: Habilitada"
+                if encryption
+                else "\n⚠️ Encriptación: No configurada",
             ]
-            
-            # Verificar configuración adicional
-            try:
-                encryption = self.s3_client.get_bucket_encryption(Bucket=self.bucket_name)
-                details.append("\n🔒 Encriptación: Habilitada")
-            except ClientError:
-                details.append("\n⚠️ Encriptación: No configurada")
-            
-            message = "\n".join(details)
-            self.operation_completed.emit(True, message)
-            
+            self.operation_completed.emit(True, "\n".join(details))
+
         except Exception as e:
             self.operation_completed.emit(False, str(e))
 
@@ -245,14 +281,7 @@ class CreateBucketDialog(QDialog):
         # Selección de región
         layout.addWidget(QLabel("Región de AWS:"))
         self.region_combo = QComboBox()
-        # Lista de regiones comunes. Se puede expandir.
-        regions = [
-            'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
-            'af-south-1', 'ap-east-1', 'ap-northeast-1', 'ap-northeast-2', 'ap-south-1', 
-            'ap-southeast-1', 'ap-southeast-2', 'ca-central-1', 'eu-central-1', 'eu-north-1',
-            'eu-south-1', 'eu-west-1', 'eu-west-2', 'eu-west-3', 'me-south-1', 'sa-east-1'
-        ]
-        self.region_combo.addItems(regions)
+        self.region_combo.addItems(AWS_REGIONS)
         layout.addWidget(self.region_combo)
 
         # Botones
@@ -384,63 +413,66 @@ Región: Detectando...
         self.parent.selected_bucket = bucket['Name']
     
     def check_permissions(self):
-        """Verifica permisos del bucket seleccionado"""
-        if hasattr(self.parent, 'selected_bucket'):
-            # Deshabilitar botón mientras se verifica
-            self.permissions_btn.setEnabled(False)
-            self.permissions_btn.setText("🔄 Verificando...")
-            
-            # Iniciar verificación
-            self.parent.start_operation('check_permissions', bucket_name=self.parent.selected_bucket)
-            
-            # Actualizar la información del bucket después de verificar permisos
-            QTimer.singleShot(1000, self.update_bucket_info)
-            
-            # Restaurar botón después de 2 segundos
-            QTimer.singleShot(2000, lambda: self.permissions_btn.setEnabled(True))
-            QTimer.singleShot(2000, lambda: self.permissions_btn.setText("🔍 Verificar Permisos"))
-            
-    def update_bucket_info(self):
-        """Actualiza la información del bucket con los resultados de la verificación"""
-        if hasattr(self.parent, 'selected_bucket'):
-            try:
-                s3_client = boto3.client('s3')
-                location = s3_client.get_bucket_location(Bucket=self.parent.selected_bucket)
-                region = location['LocationConstraint'] or 'us-east-1'
-                
-                # Obtener permisos actuales
-                permissions = check_bucket_permissions(s3_client, self.parent.selected_bucket)
-                
-                # Buscar el bucket en la lista
-                for bucket in self.buckets:
-                    if bucket['Name'] == self.parent.selected_bucket:
-                        # Crear texto de información detallada
-                        info_text = f"""
+        """Lanza la verificación de permisos en el worker. El panel se
+        rellena en show_permissions() cuando llega el resultado."""
+        bucket_name = getattr(self.parent, 'selected_bucket', None)
+        if not bucket_name:
+            return
+        if self.parent.worker.isRunning():
+            self.parent.log_tab.add_log(
+                "Operación en curso, espera a que termine", "warning"
+            )
+            return
+
+        self.permissions_btn.setEnabled(False)
+        self.permissions_btn.setText("🔄 Verificando...")
+        self.parent.start_operation('check_permissions', bucket_name=bucket_name)
+
+    def reset_permissions_button(self):
+        """Restaura el botón tras terminar la verificación (éxito o error)."""
+        if self.permissions_btn.text().startswith("🔄"):
+            self.permissions_btn.setText("🔍 Verificar Permisos")
+            self.permissions_btn.setEnabled(
+                bool(getattr(self.parent, 'selected_bucket', None))
+            )
+
+    def show_permissions(self, bucket_name, info):
+        """Muestra en el panel el resultado que envía el worker."""
+        # Si el usuario cambió de bucket mientras se verificaba, no pisar
+        if bucket_name != getattr(self.parent, 'selected_bucket', None):
+            return
+        bucket = next(
+            (b for b in self.buckets if b['Name'] == bucket_name), None
+        )
+        if bucket is None:
+            return
+
+        permissions = info['permissions']
+
+        def line(key, label):
+            ok = permissions[key]
+            return f"{'✅' if ok else '❌'} {label}: {'OK' if ok else 'Error'}"
+
+        info_text = f"""
 📦 INFORMACIÓN DEL BUCKET
 
 Nombre: {bucket['Name']}
 Fecha de creación: {bucket['CreationDate'].strftime('%Y-%m-%d %H:%M:%S')}
-Región: {region}
+Región: {info['region']}
 
 🔐 PERMISOS:
-{'✅' if permissions['read'] else '❌'} Lectura: {'OK' if permissions['read'] else 'Error'}
-{'✅' if permissions['write'] else '❌'} Escritura: {'OK' if permissions['write'] else 'Error'}
-{'✅' if permissions['delete'] else '❌'} Eliminación: {'OK' if permissions['delete'] else 'Error'}
-{'✅' if permissions['list'] else '❌'} Listado: {'OK' if permissions['list'] else 'Error'}
+{line('read', 'Lectura')}
+{line('write', 'Escritura')}
+{line('delete', 'Eliminación')}
+{line('list', 'Listado')}
 """
-                        # Verificar encriptación
-                        try:
-                            s3_client.get_bucket_encryption(Bucket=self.parent.selected_bucket)
-                            info_text += "\n🔒 Encriptación: Habilitada"
-                        except ClientError:
-                            info_text += "\n⚠️ Encriptación: No configurada"
-                        
-                        self.bucket_info.setText(info_text.strip())
-                        break
-                        
-            except Exception as e:
-                self.parent.log_tab.add_log(f"Error actualizando información: {str(e)}", "error")
-    
+        if info['encryption']:
+            info_text += "\n🔒 Encriptación: Habilitada"
+        else:
+            info_text += "\n⚠️ Encriptación: No configurada"
+
+        self.bucket_info.setText(info_text.strip())
+
     def view_files(self):
         """Cambia a la pestaña de archivos"""
         selected_items = self.bucket_list.selectedItems()
@@ -772,7 +804,11 @@ class S3ManagerApp(QMainWindow):
         self.worker = S3Worker()
         self.init_ui()
         self.setup_worker()
-        
+
+        # Si hay contraseña maestra activa, pedirla antes de tocar
+        # cualquier credencial.
+        self.ensure_unlocked()
+
         # Cargar credenciales guardadas
         self.load_saved_credentials()
         
@@ -812,38 +848,86 @@ class S3ManagerApp(QMainWindow):
         
         # Crear menú
         self.create_menu()
-        
+
+        # Barra de herramientas: selector de perfil AWS activo
+        self.create_profile_toolbar()
+
         # Aplicar estilo macOS
         self.apply_macos_style()
-    
+
     def create_menu(self):
         """Crea el menú de la aplicación"""
         menubar = self.menuBar()
-        
+
         # Menú Archivo
         file_menu = menubar.addMenu('Archivo')
-        
+
         refresh_action = QAction('🔄 Actualizar', self)
         refresh_action.triggered.connect(self.refresh_all)
         file_menu.addAction(refresh_action)
-        
-        # Añadir opción de configuración
-        config_action = QAction('⚙️ Configuración AWS', self)
-        config_action.triggered.connect(self.show_config_dialog)
+
+        # Añadir opción de gestión de perfiles AWS
+        config_action = QAction('⚙️ Gestionar Perfiles AWS...', self)
+        config_action.triggered.connect(self.show_profiles_dialog)
         file_menu.addAction(config_action)
-        
+
+        master_password_action = QAction('🔒 Contraseña Maestra...', self)
+        master_password_action.triggered.connect(self.manage_master_password)
+        file_menu.addAction(master_password_action)
+
         file_menu.addSeparator()
-        
+
         quit_action = QAction('Salir', self)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
-        
+
         # Menú Ayuda
         help_menu = menubar.addMenu('Ayuda')
-        
+
         about_action = QAction('Acerca de', self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
+
+    def create_profile_toolbar(self):
+        """Crea la barra con el selector de perfil AWS activo."""
+        toolbar = self.addToolBar("Perfil AWS")
+        toolbar.setMovable(False)
+        toolbar.addWidget(QLabel(" Perfil AWS activo: "))
+
+        self.profile_combo = QComboBox()
+        self.profile_combo.setMinimumWidth(160)
+        self.profile_combo.currentTextChanged.connect(self.on_profile_changed)
+        toolbar.addWidget(self.profile_combo)
+
+        manage_profiles_action = QAction("⚙️ Gestionar...", self)
+        manage_profiles_action.triggered.connect(self.show_profiles_dialog)
+        toolbar.addAction(manage_profiles_action)
+
+    def refresh_profile_combo(self):
+        """Sincroniza el desplegable de perfiles con lo guardado en disco."""
+        profiles = AWSCredentialsManager.list_profiles()
+        active = AWSCredentialsManager.get_active_profile()
+
+        self.profile_combo.blockSignals(True)
+        self.profile_combo.clear()
+        self.profile_combo.addItems(profiles)
+        if active in profiles:
+            self.profile_combo.setCurrentText(active)
+        self.profile_combo.blockSignals(False)
+
+    def on_profile_changed(self, profile_name):
+        """El usuario ha elegido otro perfil en el desplegable: lo activa."""
+        if not profile_name:
+            return
+        success, error_message = AWSCredentialsManager.activate_profile(profile_name)
+        if success:
+            self.log_tab.add_log(f"Perfil AWS activo: {profile_name}", "success")
+            self.status_bar.showMessage(f"✅ Perfil activo: {profile_name}")
+            self.selected_bucket = None
+            self.bucket_tab.refresh_buckets()
+        else:
+            self.log_tab.add_log(f"Error activando el perfil '{profile_name}': {error_message}", "error")
+            self.status_bar.showMessage("❌ Error de perfil AWS")
     
     def apply_macos_style(self):
         """Aplica estilo similar a macOS"""
@@ -914,6 +998,7 @@ class S3ManagerApp(QMainWindow):
         self.worker.bucket_list_ready.connect(self.bucket_tab.update_bucket_list)
         self.worker.file_list_ready.connect(self.files_tab.update_files_table)
         self.worker.log_message.connect(self.log_tab.add_log)
+        self.worker.permissions_ready.connect(self.bucket_tab.show_permissions)
 
     def switch_to_files_tab(self):
         """Cambia a la pestaña de archivos y carga su contenido."""
@@ -922,12 +1007,21 @@ class S3ManagerApp(QMainWindow):
             self.files_tab.load_bucket_files(self.selected_bucket)
     
     def load_saved_credentials(self):
-        """Carga las credenciales guardadas al inicio"""
+        """Carga y activa las credenciales del perfil AWS activo al inicio"""
         try:
-            access_key, secret_key = AWSCredentialsManager.load_credentials()
-            if access_key and secret_key:
-                self.log_tab.add_log("Credenciales AWS cargadas desde almacenamiento seguro", "success")
-                self.status_bar.showMessage("✅ Credenciales cargadas")
+            self.refresh_profile_combo()
+            active_profile = AWSCredentialsManager.get_active_profile()
+            if AWSCredentialsManager.has_credentials(active_profile):
+                AWSCredentialsManager.activate_profile(active_profile)
+                self.log_tab.add_log(
+                    f"Credenciales AWS cargadas (perfil: {active_profile})", "success"
+                )
+                self.status_bar.showMessage(f"✅ Credenciales cargadas ({active_profile})")
+            elif AWSCredentialsManager.is_master_password_enabled() and not AWSCredentialsManager.is_unlocked():
+                self.log_tab.add_log(
+                    "Credenciales bloqueadas por la contraseña maestra", "warning"
+                )
+                self.status_bar.showMessage("🔒 Bloqueado")
             else:
                 self.log_tab.add_log("No se encontraron credenciales guardadas", "warning")
                 self.status_bar.showMessage("⚠️ Sin credenciales")
@@ -973,6 +1067,7 @@ class S3ManagerApp(QMainWindow):
     def operation_completed(self, success, message):
         """Maneja la finalización de operaciones de forma centralizada."""
         self.progress_bar.setVisible(False)
+        self.bucket_tab.reset_permissions_button()
 
         if success:
             self.status_bar.showMessage("✅ Operación completada")
@@ -1004,6 +1099,16 @@ class S3ManagerApp(QMainWindow):
             self.status_bar.showMessage("❌ Error en operación")
             QMessageBox.critical(self, "Error en la Operación", message)
     
+    def closeEvent(self, event):
+        """Espera a que termine la operación S3 en curso antes de cerrar,
+        para no destruir el QThread mientras sigue ejecutándose."""
+        if self.worker.isRunning():
+            self.status_bar.showMessage(
+                "Esperando a que termine la operación en curso..."
+            )
+            self.worker.wait()
+        event.accept()
+
     def refresh_all(self):
         """Actualiza toda la información"""
         self.bucket_tab.refresh_buckets()
@@ -1053,15 +1158,111 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            self.show_config_dialog()
-    
-    def show_config_dialog(self):
-        """Muestra el diálogo de configuración AWS"""
-        dialog = AWSConfigDialog(self)
-        if dialog.exec():
-            self.check_credentials()
-            self.refresh_all()
-    
+            self.show_profiles_dialog()
+
+    def show_profiles_dialog(self):
+        """Muestra el diálogo de gestión de perfiles AWS"""
+        self.ensure_unlocked()
+        if AWSCredentialsManager.is_master_password_enabled() and not AWSCredentialsManager.is_unlocked():
+            return  # el usuario canceló el desbloqueo
+
+        dialog = AWSProfilesDialog(self)
+        dialog.exec()
+        # Se refresca siempre: el usuario puede haber creado, editado o
+        # eliminado perfiles aunque el perfil activo no haya cambiado.
+        self.refresh_profile_combo()
+        self.check_credentials()
+        self.refresh_all()
+
+    def ensure_unlocked(self):
+        """Si hay contraseña maestra activa, la pide hasta que se
+        introduce correctamente o el usuario cancela."""
+        if not AWSCredentialsManager.is_master_password_enabled():
+            return
+        while not AWSCredentialsManager.is_unlocked():
+            password, ok = QInputDialog.getText(
+                self, "Contraseña Maestra",
+                "S3Manager está protegido con contraseña maestra.\n"
+                "Introdúcela para desbloquear las credenciales AWS:",
+                QLineEdit.EchoMode.Password
+            )
+            if not ok:
+                self.log_tab.add_log(
+                    "S3Manager sigue bloqueado. Desbloquéalo desde "
+                    "Archivo → Contraseña Maestra...", "warning"
+                )
+                self.status_bar.showMessage("🔒 Bloqueado")
+                return
+            success, error_message = AWSCredentialsManager.unlock(password)
+            if not success:
+                QMessageBox.critical(self, "Contraseña Incorrecta", error_message)
+
+    def manage_master_password(self):
+        """Activa, desactiva o desbloquea la protección con contraseña maestra."""
+        if AWSCredentialsManager.is_master_password_enabled():
+            if not AWSCredentialsManager.is_unlocked():
+                self.ensure_unlocked()
+                if not AWSCredentialsManager.is_unlocked():
+                    return
+
+            reply = QMessageBox.question(
+                self, "Contraseña Maestra Activa",
+                "La protección con contraseña maestra ya está activada.\n\n"
+                "¿Quieres desactivarla? Las credenciales seguirán protegidas "
+                "por el keyring del sistema, pero sin esta capa adicional.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            password, ok = QInputDialog.getText(
+                self, "Confirmar Contraseña Maestra",
+                "Introduce la contraseña maestra actual para desactivarla:",
+                QLineEdit.EchoMode.Password
+            )
+            if not ok or not password:
+                return
+
+            success, error_message = AWSCredentialsManager.disable_master_password(password)
+            if success:
+                self.log_tab.add_log("Contraseña maestra desactivada", "success")
+                QMessageBox.information(self, "Desactivada", "La contraseña maestra se ha desactivado.")
+            else:
+                QMessageBox.critical(self, "Error", error_message)
+        else:
+            QMessageBox.information(
+                self, "Activar Contraseña Maestra",
+                "Vas a añadir una capa extra de cifrado a las claves secretas "
+                "guardadas.\n\nSe te pedirá esta contraseña cada vez que abras "
+                "S3Manager. Si la olvidas, no hay forma de recuperarla: tendrás "
+                "que volver a introducir tus credenciales AWS manualmente."
+            )
+            password, ok = QInputDialog.getText(
+                self, "Nueva Contraseña Maestra", "Elige una contraseña maestra:",
+                QLineEdit.EchoMode.Password
+            )
+            if not ok or not password:
+                return
+            confirm, ok = QInputDialog.getText(
+                self, "Confirmar Contraseña Maestra", "Repite la contraseña maestra:",
+                QLineEdit.EchoMode.Password
+            )
+            if not ok or confirm != password:
+                QMessageBox.warning(self, "Contraseñas no Coinciden", "No se ha activado la protección.")
+                return
+
+            success, error_message = AWSCredentialsManager.setup_master_password(password)
+            if success:
+                self.log_tab.add_log("Contraseña maestra activada", "success")
+                QMessageBox.information(
+                    self, "Activada",
+                    "La contraseña maestra se ha activado y las credenciales "
+                    "guardadas ya están protegidas."
+                )
+            else:
+                QMessageBox.critical(self, "Error", error_message)
+
     def show_about(self):
         """Muestra información sobre la aplicación"""
         QMessageBox.about(
@@ -1086,65 +1287,89 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
             """
         )
 
-class AWSConfigDialog(QDialog):
-    """Diálogo para configurar credenciales AWS"""
-    
+class AWSProfilesDialog(QDialog):
+    """Diálogo para gestionar (crear/editar/eliminar) perfiles de
+    credenciales AWS. Cada perfil tiene su propia access key, secret key
+    y región por defecto."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowTitle("Gestión de Perfiles AWS")
+        self.setMinimumSize(580, 380)
+        self.current_profile = None
         self.init_ui()
-    
+        self.refresh_profile_list(select=AWSCredentialsManager.get_active_profile())
+
     def init_ui(self):
         """Inicializa la interfaz del diálogo"""
-        self.setWindowTitle("Configuración AWS S3")
-        self.setMinimumWidth(400)
-        
-        layout = QVBoxLayout()
-        
-        # Título
-        title_label = QLabel("CONFIGURACIÓN DE AWS S3")
+        layout = QHBoxLayout()
+
+        # --- Columna izquierda: lista de perfiles ---
+        left_layout = QVBoxLayout()
+        left_layout.addWidget(QLabel("Perfiles guardados:"))
+
+        self.profiles_list = QListWidget()
+        self.profiles_list.itemClicked.connect(self.on_profile_item_clicked)
+        left_layout.addWidget(self.profiles_list)
+
+        list_buttons_layout = QHBoxLayout()
+        new_btn = QPushButton("➕ Nuevo")
+        new_btn.clicked.connect(self.start_new_profile)
+        list_buttons_layout.addWidget(new_btn)
+
+        delete_btn = QPushButton("🗑️ Eliminar")
+        delete_btn.clicked.connect(self.delete_selected_profile)
+        list_buttons_layout.addWidget(delete_btn)
+        left_layout.addLayout(list_buttons_layout)
+
+        io_buttons_layout = QHBoxLayout()
+        export_btn = QPushButton("📤 Exportar...")
+        export_btn.clicked.connect(self.export_profiles)
+        io_buttons_layout.addWidget(export_btn)
+
+        import_btn = QPushButton("📥 Importar...")
+        import_btn.clicked.connect(self.import_profiles)
+        io_buttons_layout.addWidget(import_btn)
+        left_layout.addLayout(io_buttons_layout)
+
+        layout.addLayout(left_layout, 1)
+
+        # --- Columna derecha: formulario del perfil seleccionado ---
+        right_layout = QVBoxLayout()
+
+        title_label = QLabel("CONFIGURACIÓN DEL PERFIL")
         title_label.setFont(QFont("SF Pro Display", 14, QFont.Weight.Bold))
-        layout.addWidget(title_label)
-        
-        # Subtítulo
-        subtitle_label = QLabel("Credenciales y configuración de Amazon S3")
-        subtitle_label.setStyleSheet("color: gray;")
-        layout.addWidget(subtitle_label)
-        
-        layout.addSpacing(10)
-        
-        # Cargar credenciales existentes
-        existing_access_key, existing_secret_key = AWSCredentialsManager.load_credentials()
-        
-        # Campo Access Key ID
-        access_key_layout = QHBoxLayout()
-        access_key_label = QLabel("AWS_ACCESS_KEY_ID:")
+        right_layout.addWidget(title_label)
+
+        right_layout.addWidget(QLabel("Nombre del perfil:"))
+        self.profile_name_input = QLineEdit()
+        self.profile_name_input.setPlaceholderText("ej: default, trabajo, personal...")
+        right_layout.addWidget(self.profile_name_input)
+
+        right_layout.addWidget(QLabel("AWS_ACCESS_KEY_ID:"))
         self.access_key_input = QLineEdit()
-        self.access_key_input.setText(existing_access_key or '')
-        access_key_layout.addWidget(access_key_label)
-        access_key_layout.addWidget(self.access_key_input)
-        layout.addLayout(access_key_layout)
-        
-        # Campo Secret Access Key
-        secret_key_layout = QHBoxLayout()
-        secret_key_label = QLabel("AWS_SECRET_ACCESS_KEY:")
+        right_layout.addWidget(self.access_key_input)
+
+        right_layout.addWidget(QLabel("AWS_SECRET_ACCESS_KEY:"))
         self.secret_key_input = QLineEdit()
         self.secret_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.secret_key_input.setText(existing_secret_key or '')
-        secret_key_layout.addWidget(secret_key_label)
-        secret_key_layout.addWidget(self.secret_key_input)
-        layout.addLayout(secret_key_layout)
-        
-        layout.addSpacing(20)
-        
-        # Botones
+        right_layout.addWidget(self.secret_key_input)
+
+        right_layout.addWidget(QLabel("Región por defecto:"))
+        self.region_combo = QComboBox()
+        self.region_combo.setEditable(True)
+        self.region_combo.addItems(AWS_REGIONS)
+        right_layout.addWidget(self.region_combo)
+
+        right_layout.addStretch()
+
         button_layout = QHBoxLayout()
-        
-        cancel_btn = QPushButton("Cancelar")
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
-        
-        save_btn = QPushButton("Guardar")
-        save_btn.clicked.connect(self.save_config)
+        close_btn = QPushButton("Cerrar")
+        close_btn.clicked.connect(self.accept)
+        button_layout.addWidget(close_btn)
+
+        save_btn = QPushButton("💾 Guardar Perfil")
+        save_btn.clicked.connect(self.save_profile)
         save_btn.setDefault(True)
         save_btn.setStyleSheet("""
             QPushButton {
@@ -1160,40 +1385,199 @@ class AWSConfigDialog(QDialog):
             }
         """)
         button_layout.addWidget(save_btn)
-        
-        layout.addLayout(button_layout)
-        
+
+        right_layout.addLayout(button_layout)
+
+        layout.addLayout(right_layout, 2)
         self.setLayout(layout)
-    
-    def save_config(self):
-        """Guarda la configuración AWS"""
+
+    def refresh_profile_list(self, select=None):
+        """Reconstruye la lista de perfiles, marcando el activo con ⭐."""
+        self.profiles_list.clear()
+        active = AWSCredentialsManager.get_active_profile()
+        target = select if select is not None else self.current_profile
+
+        for name in AWSCredentialsManager.list_profiles():
+            label = f"⭐ {name}" if name == active else name
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, name)
+            self.profiles_list.addItem(item)
+            if name == target:
+                self.profiles_list.setCurrentItem(item)
+
+        if target:
+            self.load_profile_into_form(target)
+        elif not AWSCredentialsManager.list_profiles():
+            self.start_new_profile()
+
+    def on_profile_item_clicked(self, item):
+        self.load_profile_into_form(item.data(Qt.ItemDataRole.UserRole))
+
+    def load_profile_into_form(self, name):
+        """Rellena el formulario con los datos de `name`. Si el perfil
+        todavía no tiene credenciales guardadas, se trata como uno nuevo
+        (nombre editable)."""
+        access_key, secret_key, region = AWSCredentialsManager.load_credentials(name)
+        exists = bool(access_key and secret_key)
+        self.current_profile = name if exists else None
+
+        self.profile_name_input.setText(name)
+        self.profile_name_input.setEnabled(not exists)
+        self.access_key_input.setText(access_key or '')
+        self.secret_key_input.setText(secret_key or '')
+        self.region_combo.setCurrentText(region or AWS_REGIONS[0])
+
+    def start_new_profile(self):
+        """Limpia el formulario para dar de alta un perfil nuevo."""
+        self.current_profile = None
+        self.profiles_list.clearSelection()
+        self.profile_name_input.clear()
+        self.profile_name_input.setEnabled(True)
+        self.access_key_input.clear()
+        self.secret_key_input.clear()
+        self.region_combo.setCurrentIndex(0)
+        self.profile_name_input.setFocus()
+
+    def save_profile(self):
+        """Guarda el perfil que hay actualmente en el formulario."""
+        name = self.profile_name_input.text().strip()
         access_key = self.access_key_input.text().strip()
         secret_key = self.secret_key_input.text().strip()
-        
-        if not access_key or not secret_key:
+        region = self.region_combo.currentText().strip()
+
+        if not name or not access_key or not secret_key:
             QMessageBox.warning(
                 self,
                 "Campos Requeridos",
-                "Por favor, complete ambos campos de credenciales AWS."
+                "Indica un nombre de perfil y ambas credenciales AWS."
             )
             return
-        
-        # Guardar usando el gestor de credenciales
-        success, error_message = AWSCredentialsManager.save_credentials(access_key, secret_key)
+
+        success, error_message = AWSCredentialsManager.save_credentials(
+            access_key, secret_key, region, profile=name
+        )
         if success:
+            self.refresh_profile_list(select=name)
             QMessageBox.information(
                 self,
-                "Configuración Guardada (V2)",
-                "¡Éxito! Las credenciales AWS se han guardado correctamente en la nueva versión."
+                "Perfil Guardado",
+                f"El perfil '{name}' se ha guardado correctamente."
             )
-            self.accept()
         else:
-            detailed_error = f"No se pudieron guardar las credenciales.\n\nRazón: {error_message}"
             QMessageBox.critical(
                 self,
                 "Error al Guardar",
-                detailed_error
+                f"No se pudo guardar el perfil.\n\nRazón: {error_message}"
             )
+
+    def delete_selected_profile(self):
+        """Elimina el perfil actualmente cargado en el formulario."""
+        if not self.current_profile:
+            QMessageBox.warning(
+                self,
+                "Selecciona un Perfil",
+                "Elige un perfil de la lista para eliminarlo."
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Eliminar Perfil",
+            f"¿Seguro que quieres eliminar el perfil '{self.current_profile}'?\n"
+            "Esta acción no se puede deshacer.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            AWSCredentialsManager.delete_profile(self.current_profile)
+            self.current_profile = None
+            self.refresh_profile_list()
+
+    def export_profiles(self):
+        """Exporta todos los perfiles guardados a un archivo cifrado."""
+        if not AWSCredentialsManager.list_profiles():
+            QMessageBox.warning(self, "Nada que Exportar", "No hay perfiles guardados todavía.")
+            return
+
+        password, ok = QInputDialog.getText(
+            self, "Contraseña de Exportación",
+            "Elige una contraseña para cifrar el archivo exportado.\n"
+            "La necesitarás para importarlo de nuevo:",
+            QLineEdit.EchoMode.Password
+        )
+        if not ok or not password:
+            return
+
+        confirm, ok = QInputDialog.getText(
+            self, "Confirmar Contraseña", "Repite la contraseña:",
+            QLineEdit.EchoMode.Password
+        )
+        if not ok or confirm != password:
+            QMessageBox.warning(self, "Contraseñas no Coinciden", "La exportación se ha cancelado.")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar Perfiles AWS", "s3manager_perfiles.s3mcfg",
+            "Configuración S3Manager (*.s3mcfg)"
+        )
+        if not file_path:
+            return
+
+        try:
+            blob = AWSCredentialsManager.export_profiles(password)
+            with open(file_path, 'wb') as f:
+                f.write(blob)
+            QMessageBox.information(
+                self, "Exportación Completada",
+                f"Perfiles exportados y cifrados en:\n{file_path}\n\n"
+                "Guarda la contraseña en un lugar seguro: sin ella no podrás "
+                "recuperar este archivo."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error al Exportar", str(e))
+
+    def import_profiles(self):
+        """Importa perfiles desde un archivo previamente exportado."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Importar Perfiles AWS", "",
+            "Configuración S3Manager (*.s3mcfg);;Todos los archivos (*)"
+        )
+        if not file_path:
+            return
+
+        password, ok = QInputDialog.getText(
+            self, "Contraseña de Importación",
+            "Introduce la contraseña usada al exportar este archivo:",
+            QLineEdit.EchoMode.Password
+        )
+        if not ok or not password:
+            return
+
+        existing = set(AWSCredentialsManager.list_profiles())
+        overwrite = True
+        if existing:
+            reply = QMessageBox.question(
+                self, "Perfiles Existentes",
+                "Si el archivo importado contiene perfiles con el mismo nombre "
+                "que perfiles ya guardados, ¿quieres sobrescribirlos?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            overwrite = reply == QMessageBox.StandardButton.Yes
+
+        try:
+            with open(file_path, 'rb') as f:
+                blob = f.read()
+        except Exception as e:
+            QMessageBox.critical(self, "Error al Leer el Archivo", str(e))
+            return
+
+        success, message = AWSCredentialsManager.import_profiles(blob, password, overwrite)
+        if success:
+            self.refresh_profile_list()
+            QMessageBox.information(self, "Importación Completada", message)
+        else:
+            QMessageBox.critical(self, "Error al Importar", message)
 
 def main():
     """Función principal de la aplicación"""
@@ -1201,7 +1585,7 @@ def main():
     
     # Configurar aplicación
     app.setApplicationName("S3 Manager")
-    app.setApplicationVersion("1.1.0")
+    app.setApplicationVersion("1.1.1")
     app.setOrganizationName("Sistema de Catálogo de Tablas")
     
     # Crear y mostrar ventana principal

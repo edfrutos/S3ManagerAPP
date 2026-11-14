@@ -211,10 +211,10 @@ if [ -d "$DIR/../../venv310" ]; then
 fi
 
 # Verificar dependencias
-python3 -c "import PyQt6, boto3" 2>/dev/null
+python3 -c "import PySide6, boto3" 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "❌ Dependencias faltantes. Instalando..."
-    pip install PyQt6 boto3
+    pip install PySide6 boto3
 fi
 
 # Ejecutar aplicación
@@ -249,12 +249,12 @@ def main():
     
     # Verificar dependencias
     try:
-        import PyQt6
+        import PySide6
         import boto3
         print("✅ Dependencias verificadas")
     except ImportError as e:
         print(f"❌ Dependencia faltante: {e}")
-        print("Instala con: pip install PyQt6 boto3")
+        print("Instala con: pip install PySide6 boto3")
         sys.exit(1)
     
     # Verificar PyInstaller

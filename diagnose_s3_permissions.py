@@ -10,6 +10,7 @@ import sys
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 import json
+import uuid
 from datetime import datetime
 
 def print_header():
@@ -108,8 +109,9 @@ def check_bucket_permissions(s3_client, bucket_name):
         print(f"   ✗ Permiso de lectura: Error - {e}")
     
     try:
-        # Probar escritura (crear un objeto de prueba)
-        test_key = 'test-permissions-check.txt'
+        # Probar escritura (crear un objeto de prueba). Clave única por
+        # ejecución para no sobrescribir nunca un objeto real del bucket.
+        test_key = f'.s3manager-permcheck-{uuid.uuid4().hex}.txt'
         s3_client.put_object(
             Bucket=bucket_name,
             Key=test_key,
