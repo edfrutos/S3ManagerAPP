@@ -183,7 +183,7 @@ app = BUNDLE(
     coll,
     name='S3Manager.app',
     icon='icon.icns',
-    bundle_identifier='com.catalogotablas.s3manager',
+    bundle_identifier='com.edefrutos.s3manager',
     info_plist={
         'CFBundleDisplayName': 'S3 Manager',
         'CFBundleShortVersionString': '1.1.0',

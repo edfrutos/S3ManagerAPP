@@ -97,7 +97,7 @@ def create_info_plist(app_path):
     <key>CFBundleIconFile</key>
     <string>icon.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>com.catalogotablas.s3manager</string>
+    <string>com.edefrutos.s3manager</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
