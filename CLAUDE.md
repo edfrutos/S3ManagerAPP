@@ -18,7 +18,8 @@ python s3_manager_app.py             # ejecutar la GUI desde código fuente
 python diagnose_s3_permissions.py    # herramienta CLI interactiva (misma lógica S3)
 
 make build                           # python3 build_macos_app.py → build/S3Manager.app (PyInstaller)
-make dmg                             # build + create_dmg_installer.py → S3Manager.dmg
+make dmg                             # build + create_dmg_installer.py --skip-build → S3Manager.dmg (sin firmar)
+make release                         # sign_and_notarize.py: build, firma Developer ID, DMG, notarización y staple
 make clean
 ```
 
@@ -54,6 +55,8 @@ Todo el código vive en módulos planos en la raíz (sin paquete):
 - **Empaquetado** — `build_macos_app.py` (PyInstaller `--windowed --onedir`, Info.plist propio, `icon.icns`), `create_dmg_installer.py` / `create_simple_dmg.py`. La versión vive en `app_version.py` (`__version__`), que usan la GUI y el `Info.plist` de `build_macos_app.py`; `pyproject.toml` y `README.md` la repiten a mano: mantenerlas sincronizadas.
 
 ## Notas
+
+- Firma/notarización: `sign_and_notarize.py` requiere `CODESIGN_IDENTITY` (SHA-1 del certificado Developer ID Application) y `NOTARY_PROFILE` (perfil de `xcrun notarytool store-credentials`). Firma de dentro hacia fuera con hardened runtime (`entitlements.plist`). No escribir nada dentro de la `.app` después de firmarla (rompe el sello) y copiarla siempre preservando symlinks.
 
 - El toolkit Qt es **PySide6** (`Signal` se importa con alias `pyqtSignal`). No introducir imports de PyQt6.
 - La app no conecta a AWS al arrancar (evita cuelgues por red); el usuario pulsa "Actualizar". Ver `NETWORK_ISSUE_ANALYSIS.md`.

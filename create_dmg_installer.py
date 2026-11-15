@@ -30,8 +30,12 @@ def run_command(command, cwd=None):
     process.wait()
     return process.returncode == 0
 
-def create_dmg():
-    """Crea el instalador DMG para S3Manager"""
+def create_dmg(skip_build=False):
+    """Crea el instalador DMG para S3Manager.
+
+    skip_build=True empaqueta build/S3Manager.app tal cual (p. ej. ya
+    firmada por sign_and_notarize.py) sin volver a construirla.
+    """
     print("🎯 Creando instalador DMG para S3Manager")
     print("=" * 60)
     
@@ -47,13 +51,18 @@ def create_dmg():
         
         # Construir la aplicación
         print("\n1️⃣ Construyendo aplicación...")
-        if not run_command("python3 build_macos_app.py"):
+        if skip_build:
+            print("   (omitido: se usa build/S3Manager.app existente)")
+            if not os.path.isdir("build/S3Manager.app"):
+                print("❌ No existe build/S3Manager.app")
+                return False
+        elif not run_command(f'"{sys.executable}" build_macos_app.py'):
             print("❌ Error construyendo la aplicación")
             return False
         
         # Copiar la aplicación al directorio temporal
         app_path = temp_path / "S3Manager.app"
-        shutil.copytree("build/S3Manager.app", app_path)
+        shutil.copytree("build/S3Manager.app", app_path, symlinks=True)
         
         # Crear archivo de bienvenida
         welcome_path = temp_path / "README.txt"
@@ -70,11 +79,9 @@ Para instalar:
 """
         welcome_path.write_text(welcome_content)
         
-        # Crear archivo de configuración inicial
-        first_run_path = app_path / "Contents/Resources/first_run"
-        first_run_path.parent.mkdir(exist_ok=True)
-        first_run_path.touch()
-        
+        # No escribir nada dentro de la .app: invalidaría su firma.
+        # La primera ejecución se detecta con ~/.s3manager_first_run.
+
         # Crear DMG
         print("\n2️⃣ Creando DMG...")
         dmg_path = "S3Manager.dmg"
@@ -128,7 +135,9 @@ Para instalar:
         try:
             # Copiar archivos al DMG
             print("\n3️⃣ Copiando archivos...")
-            shutil.copytree(app_path, f"{mount_point}/S3Manager.app")
+            shutil.copytree(
+                app_path, f"{mount_point}/S3Manager.app", symlinks=True
+            )
             shutil.copy2(welcome_path, mount_point)
             
             # Crear enlace simbólico a Aplicaciones
@@ -215,7 +224,7 @@ def main():
         print("❌ Este script solo funciona en macOS")
         return 1
     
-    success = create_dmg()
+    success = create_dmg(skip_build="--skip-build" in sys.argv)
     
     if success:
         print("\n🎉 ¡Instalador DMG creado exitosamente!")
