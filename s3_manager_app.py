@@ -37,14 +37,34 @@ from diagnose_s3_permissions import (
 from aws_credentials_manager import AWSCredentialsManager
 from app_version import __version__
 
-# Regiones AWS habituales, usadas tanto al crear buckets como al
-# configurar la región por defecto de un perfil.
-AWS_REGIONS = [
-    'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
-    'af-south-1', 'ap-east-1', 'ap-northeast-1', 'ap-northeast-2', 'ap-south-1',
-    'ap-southeast-1', 'ap-southeast-2', 'ca-central-1', 'eu-central-1', 'eu-north-1',
-    'eu-south-1', 'eu-west-1', 'eu-west-2', 'eu-west-3', 'me-south-1', 'sa-east-1'
+# Regiones AWS de S3, usadas tanto al crear buckets como al configurar la
+# región por defecto de un perfil. Se leen de los datos de botocore (se
+# actualizan con boto3); la lista fija es solo un respaldo.
+_FALLBACK_REGIONS = [
+    'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'ca-central-1', 'ca-west-1',
+    'mx-central-1', 'sa-east-1', 'af-south-1', 'ap-east-1', 'ap-east-2',
+    'ap-northeast-1', 'ap-northeast-2', 'ap-northeast-3', 'ap-south-1', 'ap-south-2',
+    'ap-southeast-1', 'ap-southeast-2', 'ap-southeast-3', 'ap-southeast-4',
+    'ap-southeast-5', 'ap-southeast-6', 'ap-southeast-7', 'eu-central-1',
+    'eu-central-2', 'eu-north-1', 'eu-south-1', 'eu-south-2', 'eu-west-1',
+    'eu-west-2', 'eu-west-3', 'il-central-1', 'me-central-1', 'me-south-1',
 ]
+
+
+def _load_s3_regions():
+    try:
+        regions = sorted(boto3.session.Session().get_available_regions('s3'))
+    except Exception:
+        regions = []
+    if not regions:
+        regions = list(_FALLBACK_REGIONS)
+    # us-east-1 primero: es la región por defecto (AWS_REGIONS[0])
+    if 'us-east-1' in regions:
+        regions.remove('us-east-1')
+    return ['us-east-1'] + regions
+
+
+AWS_REGIONS = _load_s3_regions()
 
 class S3Worker(QThread):
     """Worker thread para operaciones S3 que no bloqueen la UI"""

@@ -49,6 +49,7 @@ python3 test_s3_functionality.py
 - [Guía de Usuario](docs/README_S3_Manager_v1.1.md)
 - [Requisitos del Sistema](docs/SYSTEM_REQUIREMENTS_v1.1.md)
 - [Reporte de Pruebas](docs/TESTING_FINAL_REPORT_v1.1.md)
+- [Historial de Cambios v1.2.2](docs/CHANGELOG_v1.2.2.md)
 - [Historial de Cambios v1.2.1](docs/CHANGELOG_v1.2.1.md)
 - [Historial de Cambios v1.2.0](docs/CHANGELOG_v1.2.0.md)
 - [Historial de Cambios v1.1.1](docs/CHANGELOG_v1.1.1.md)
@@ -76,5 +77,5 @@ Para problemas o sugerencias, revisa la documentación en `docs/`.
 ---
 
 **Desarrollado por**: EDF Developer
-**Versión**: 1.2.1
+**Versión**: 1.2.2
 **Licencia**: MIT
