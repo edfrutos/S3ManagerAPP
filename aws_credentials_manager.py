@@ -265,13 +265,13 @@ class AWSCredentialsManager:
         # disponible, o venimos de una migración).
         try:
             if cls.AWS_CREDENTIALS_FILE.exists():
-                creds = configparser.ConfigParser()
+                creds = configparser.ConfigParser(interpolation=None)
                 creds.read(cls.AWS_CREDENTIALS_FILE)
                 if profile in creds:
                     access_key = creds[profile].get('aws_access_key_id') or access_key
                     secret_key = creds[profile].get('aws_secret_access_key') or secret_key
             if not region and cls.AWS_CONFIG_FILE.exists():
-                cfg = configparser.ConfigParser()
+                cfg = configparser.ConfigParser(interpolation=None)
                 cfg.read(cls.AWS_CONFIG_FILE)
                 section = 'default' if profile == cls.DEFAULT_PROFILE else f'profile {profile}'
                 if section in cfg:
@@ -337,7 +337,7 @@ class AWSCredentialsManager:
                     os.environ.pop('AWS_DEFAULT_REGION', None)
                     boto3.DEFAULT_SESSION = None
 
-            cls._sync_aws_files()
+            cls._sync_aws_files(removed=[profile])
             return True
 
         except Exception as e:
@@ -346,19 +346,11 @@ class AWSCredentialsManager:
 
     @classmethod
     def delete_credentials(cls) -> bool:
-        """Elimina TODOS los perfiles guardados (mantiene compatibilidad
-        con el comportamiento de la versión anterior, de un único perfil)."""
+        """Elimina TODOS los perfiles guardados en S3Manager. Sus
+        secciones se quitan de ~/.aws; los perfiles ajenos se conservan."""
         ok = True
         for profile in cls.list_profiles():
             ok = cls.delete_profile(profile) and ok
-        try:
-            if cls.AWS_CREDENTIALS_FILE.exists():
-                cls.AWS_CREDENTIALS_FILE.unlink()
-            if cls.AWS_CONFIG_FILE.exists():
-                cls.AWS_CONFIG_FILE.unlink()
-        except Exception as e:
-            print(f"Error eliminando archivos de credenciales AWS: {e}")
-            ok = False
         return ok
 
     @classmethod
@@ -472,21 +464,54 @@ class AWSCredentialsManager:
             return False, f"Error desactivando la contraseña maestra: {e}"
 
     # ------------------------------------------------------------------
-    # Sincroniza ~/.aws/credentials y ~/.aws/config con TODOS los
-    # perfiles conocidos.
+    # Sincroniza ~/.aws/credentials y ~/.aws/config con los perfiles de
+    # S3Manager, conservando los perfiles ajenos (aws-cli, otras apps).
     # ------------------------------------------------------------------
+    @staticmethod
+    def _read_ini(path: Path) -> configparser.ConfigParser:
+        parser = configparser.ConfigParser(interpolation=None)
+        if path.exists():
+            parser.read(path)
+        return parser
+
+    @staticmethod
+    def _write_ini(parser: configparser.ConfigParser, path: Path) -> None:
+        """Escritura atómica con permisos 600. Si no queda ninguna
+        sección, se elimina el archivo."""
+        if not parser.sections():
+            if path.exists():
+                path.unlink()
+            return
+        tmp = path.with_name(path.name + '.s3manager.tmp')
+        with open(tmp, 'w') as f:
+            parser.write(f)
+        tmp.chmod(0o600)
+        os.replace(tmp, path)
+
     @classmethod
-    def _sync_aws_files(cls, overrides: dict | None = None) -> None:
-        """Reescribe ~/.aws/credentials y ~/.aws/config con todos los
-        perfiles guardados. `overrides` permite pasar directamente
+    def _config_section(cls, profile: str) -> str:
+        return 'default' if profile == cls.DEFAULT_PROFILE else f'profile {profile}'
+
+    @classmethod
+    def _sync_aws_files(cls, overrides: dict | None = None,
+                        removed: list | None = None) -> None:
+        """Actualiza ~/.aws/credentials y ~/.aws/config con los perfiles
+        guardados en S3Manager. Solo toca las secciones de esos perfiles
+        (y las de `removed`, que se borran); el resto de perfiles del
+        archivo se conservan. `overrides` permite pasar directamente
         (access_key, secret_key, region) de un perfil recién guardado,
         para no depender de poder releerlo del keyring justo después
-        (relevante en TEST_MODE, donde el keyring se omite)."""
+        (relevante en TEST_MODE, donde el keyring se omite).
+        Nota: configparser no conserva los comentarios del archivo."""
         overrides = overrides or {}
         cls.AWS_DIR.mkdir(mode=0o700, exist_ok=True)
 
-        creds = configparser.ConfigParser()
-        cfg = configparser.ConfigParser()
+        creds = cls._read_ini(cls.AWS_CREDENTIALS_FILE)
+        cfg = cls._read_ini(cls.AWS_CONFIG_FILE)
+
+        for profile in removed or []:
+            creds.remove_section(profile)
+            cfg.remove_section(cls._config_section(profile))
 
         protected = cls.is_master_password_enabled()
         for profile in cls.list_profiles():
@@ -496,6 +521,7 @@ class AWSCredentialsManager:
                 access_key, secret_key, region = cls.load_credentials(profile)
 
             if not access_key:
+                # No se puede leer: se deja su sección tal cual.
                 continue
 
             if protected:
@@ -505,21 +531,25 @@ class AWSCredentialsManager:
             elif not secret_key:
                 continue
 
+            # La sección de credenciales se sustituye entera (un
+            # aws_session_token antiguo ya no sería válido).
+            creds.remove_section(profile)
             creds[profile] = {
                 'aws_access_key_id': access_key,
                 'aws_secret_access_key': secret_key,
             }
 
-            section = 'default' if profile == cls.DEFAULT_PROFILE else f'profile {profile}'
-            cfg[section] = {'region': region} if region else {}
+            # En config se conservan otras claves (output, etc.).
+            section = cls._config_section(profile)
+            if not cfg.has_section(section):
+                cfg.add_section(section)
+            if region:
+                cfg.set(section, 'region', region)
+            else:
+                cfg.remove_option(section, 'region')
 
-        with open(cls.AWS_CREDENTIALS_FILE, 'w') as f:
-            creds.write(f)
-        cls.AWS_CREDENTIALS_FILE.chmod(0o600)
-
-        with open(cls.AWS_CONFIG_FILE, 'w') as f:
-            cfg.write(f)
-        cls.AWS_CONFIG_FILE.chmod(0o600)
+        cls._write_ini(creds, cls.AWS_CREDENTIALS_FILE)
+        cls._write_ini(cfg, cls.AWS_CONFIG_FILE)
 
     # ------------------------------------------------------------------
     # Exportación / importación de perfiles, cifradas con contraseña.
