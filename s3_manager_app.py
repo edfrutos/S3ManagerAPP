@@ -1218,7 +1218,10 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
                 self, "Contraseña Maestra Activa",
                 "La protección con contraseña maestra ya está activada.\n\n"
                 "¿Quieres desactivarla? Las credenciales seguirán protegidas "
-                "por el keyring del sistema, pero sin esta capa adicional.",
+                "por el keyring del sistema, pero sin esta capa adicional.\n\n"
+                "Al desactivarla, la clave secreta real volverá a escribirse "
+                "en ~/.aws/credentials (sin cifrar, permisos 600) para que "
+                "aws-cli y otras herramientas puedan usarla.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -1240,13 +1243,25 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
             else:
                 QMessageBox.critical(self, "Error", error_message)
         else:
-            QMessageBox.information(
+            reply = QMessageBox.warning(
                 self, "Activar Contraseña Maestra",
                 "Vas a añadir una capa extra de cifrado a las claves secretas "
                 "guardadas.\n\nSe te pedirá esta contraseña cada vez que abras "
                 "S3Manager. Si la olvidas, no hay forma de recuperarla: tendrás "
-                "que volver a introducir tus credenciales AWS manualmente."
+                "que volver a introducir tus credenciales AWS manualmente.\n\n"
+                "Importante para aws-cli y otras herramientas: mientras esté "
+                "activa, S3Manager no escribe la clave secreta real en "
+                "~/.aws/credentials (deja un marcador). aws-cli, los SDK y "
+                "otras herramientas que lean ese archivo fallarán con "
+                "SignatureDoesNotMatch para los perfiles de S3Manager. "
+                "Para usarlas, exporta las claves como variables de entorno "
+                "(AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) o desactiva la "
+                "contraseña maestra.\n\n¿Quieres continuar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
             password, ok = QInputDialog.getText(
                 self, "Nueva Contraseña Maestra", "Elige una contraseña maestra:",
                 QLineEdit.EchoMode.Password
@@ -1267,7 +1282,9 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
                 QMessageBox.information(
                     self, "Activada",
                     "La contraseña maestra se ha activado y las credenciales "
-                    "guardadas ya están protegidas."
+                    "guardadas ya están protegidas.\n\nRecuerda: aws-cli ya "
+                    "no podrá usar los perfiles de S3Manager desde "
+                    "~/.aws/credentials."
                 )
             else:
                 QMessageBox.critical(self, "Error", error_message)

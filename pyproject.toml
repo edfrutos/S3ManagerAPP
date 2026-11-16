@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "s3-manager"
-version = "1.2.2"  # mantener igual que app_version.__version__
+version = "1.2.3"  # mantener igual que app_version.__version__
 description = "Gestor de archivos S3 con interfaz gráfica"
 authors = [
     {name = "Sistema de Catálogo de Tablas", email = "admin@example.com"}
