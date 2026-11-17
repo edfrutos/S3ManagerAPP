@@ -27,6 +27,11 @@ from crypto_utils import (
 
 EXPORT_FORMAT_VERSION = 1
 
+# macOS define esta variable solo en procesos con App Sandbox (versión de
+# la Mac App Store). Dentro del sandbox, Path.home() apunta al contenedor
+# de la app y el ~/.aws real no es accesible.
+IS_SANDBOXED = bool(os.environ.get("APP_SANDBOX_CONTAINER_ID"))
+
 # Texto de verificación fijo: al activar la contraseña maestra se cifra
 # con la clave derivada y se guarda junto al salt. Al desbloquear, se
 # intenta descifrar: si el resultado coincide, la contraseña es correcta.
@@ -259,6 +264,10 @@ class AWSCredentialsManager:
             # keyring: no hay fallback de archivo, porque ese archivo
             # nunca contiene el valor real.
             return access_key, None, region
+
+        if IS_SANDBOXED:
+            # El .aws del contenedor no lo escribe nadie: no hay respaldo.
+            return access_key, secret_key, region
 
         # Última red de seguridad: leer directamente de ~/.aws si el
         # keyring no tiene nada (p. ej. el sistema no tiene keyring
@@ -502,7 +511,11 @@ class AWSCredentialsManager:
         (access_key, secret_key, region) de un perfil recién guardado,
         para no depender de poder releerlo del keyring justo después
         (relevante en TEST_MODE, donde el keyring se omite).
-        Nota: configparser no conserva los comentarios del archivo."""
+        Nota: configparser no conserva los comentarios del archivo.
+        En sandbox no hace nada: el ~/.aws real no es accesible y el del
+        contenedor no lo lee ningún aws-cli."""
+        if IS_SANDBOXED:
+            return
         overrides = overrides or {}
         cls.AWS_DIR.mkdir(mode=0o700, exist_ok=True)
 

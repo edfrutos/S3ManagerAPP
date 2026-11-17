@@ -19,7 +19,9 @@ from PySide6.QtWidgets import (
     QMessageBox, QSplitter, QGroupBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QStatusBar, QMenuBar, QToolBar, QLineEdit, QDialog, QInputDialog, QDialogButtonBox
 )
-from PySide6.QtCore import Qt, QThread, Signal as pyqtSignal, QTimer, QSize
+from PySide6.QtCore import (
+    Qt, QThread, Signal as pyqtSignal, QTimer, QSize, QFile, QIODevice,
+)
 from PySide6.QtGui import QIcon, QFont, QPixmap, QAction
 
 import boto3
@@ -34,8 +36,64 @@ from diagnose_s3_permissions import (
 )
 
 # Importar gestor de credenciales
-from aws_credentials_manager import AWSCredentialsManager
+from aws_credentials_manager import AWSCredentialsManager, IS_SANDBOXED
 from app_version import __version__
+
+
+# ----------------------------------------------------------------------
+# E/S en rutas elegidas por el usuario. Con App Sandbox, Qt guarda el
+# permiso del panel (marcador security-scoped) y solo lo activa mientras
+# hay un QFile abierto: open() de Python y boto3 reciben EPERM. Por eso
+# los archivos elegidos se leen/escriben con QFile. Sin sandbox, QFile se
+# comporta igual que open().
+# ----------------------------------------------------------------------
+def write_user_file(path, data: bytes) -> None:
+    f = QFile(path)
+    if not f.open(QIODevice.OpenModeFlag.WriteOnly
+                  | QIODevice.OpenModeFlag.Truncate):
+        raise OSError(f"No se pudo escribir {path}: {f.errorString()}")
+    try:
+        if f.write(data) != len(data):
+            raise OSError(f"No se pudo escribir {path}: {f.errorString()}")
+    finally:
+        f.close()
+
+
+def read_user_file(path) -> bytes:
+    f = QFile(path)
+    if not f.open(QIODevice.OpenModeFlag.ReadOnly):
+        raise OSError(f"No se pudo leer {path}: {f.errorString()}")
+    try:
+        return bytes(f.readAll().data())
+    finally:
+        f.close()
+
+
+class FolderAccess:
+    """Mantiene abierto un QFile oculto dentro de `folder` mientras dura
+    el bloque `with`. Así Qt activa el permiso del sandbox sobre la
+    carpeta y Python (os.makedirs, boto3) puede escribir en ella y en sus
+    subcarpetas. Al salir, se cierra y se borra."""
+
+    PROBE_NAME = ".s3manager-acceso"
+
+    def __init__(self, folder):
+        self.path = os.path.join(folder, self.PROBE_NAME)
+        self.file = None
+
+    def __enter__(self):
+        f = QFile(self.path)
+        if f.open(QIODevice.OpenModeFlag.WriteOnly):
+            self.file = f
+        # Si falla, se sigue: el error real lo dará la escritura.
+        return self
+
+    def __exit__(self, *exc):
+        if self.file is not None:
+            self.file.close()
+            QFile.remove(self.path)
+            self.file = None
+        return False
 
 # Regiones AWS de S3, usadas tanto al crear buckets como al configurar la
 # región por defecto de un perfil. Se leen de los datos de botocore (se
@@ -156,20 +214,23 @@ class S3Worker(QThread):
                 self.s3_client = boto3.client('s3')
             
             total_files = len(self.selected_files)
-            for i, file_obj in enumerate(self.selected_files):
-                # Actualizar progreso
-                progress = int((i / total_files) * 100)
-                self.progress_updated.emit(progress, f"Descargando: {file_obj['Key']}")
-                
-                # Crear ruta local
-                local_file_path = os.path.join(self.local_path, file_obj['Key'])
-                local_dir = os.path.dirname(local_file_path)
-                if local_dir:
-                    os.makedirs(local_dir, exist_ok=True)
-                
-                # Descargar archivo
-                self.s3_client.download_file(self.bucket_name, file_obj['Key'], local_file_path)
-                
+            # Permiso del sandbox sobre la carpeta elegida mientras dure
+            # la descarga (ver FolderAccess).
+            with FolderAccess(self.local_path):
+                for i, file_obj in enumerate(self.selected_files):
+                    # Actualizar progreso
+                    progress = int((i / total_files) * 100)
+                    self.progress_updated.emit(progress, f"Descargando: {file_obj['Key']}")
+
+                    # Crear ruta local
+                    local_file_path = os.path.join(self.local_path, file_obj['Key'])
+                    local_dir = os.path.dirname(local_file_path)
+                    if local_dir:
+                        os.makedirs(local_dir, exist_ok=True)
+
+                    # Descargar archivo
+                    self.s3_client.download_file(self.bucket_name, file_obj['Key'], local_file_path)
+
             self.progress_updated.emit(100, "Descarga completada")
             self.operation_completed.emit(True, f"Se descargaron {total_files} archivos exitosamente")
             
@@ -810,8 +871,9 @@ class LogTab(QWidget):
         
         if file_path:
             try:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(self.log_text.toPlainText())
+                write_user_file(
+                    file_path, self.log_text.toPlainText().encode('utf-8')
+                )
                 self.add_log(f"Logs exportados a: {file_path}", "success")
             except Exception as e:
                 self.add_log(f"Error exportando logs: {str(e)}", "error")
@@ -1214,14 +1276,19 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
                 if not AWSCredentialsManager.is_unlocked():
                     return
 
-            reply = QMessageBox.question(
-                self, "Contraseña Maestra Activa",
+            text = (
                 "La protección con contraseña maestra ya está activada.\n\n"
                 "¿Quieres desactivarla? Las credenciales seguirán protegidas "
-                "por el keyring del sistema, pero sin esta capa adicional.\n\n"
-                "Al desactivarla, la clave secreta real volverá a escribirse "
-                "en ~/.aws/credentials (sin cifrar, permisos 600) para que "
-                "aws-cli y otras herramientas puedan usarla.",
+                "por el keyring del sistema, pero sin esta capa adicional."
+            )
+            if not IS_SANDBOXED:
+                text += (
+                    "\n\nAl desactivarla, la clave secreta real volverá a "
+                    "escribirse en ~/.aws/credentials (sin cifrar, permisos "
+                    "600) para que aws-cli y otras herramientas puedan usarla."
+                )
+            reply = QMessageBox.question(
+                self, "Contraseña Maestra Activa", text,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -1243,20 +1310,27 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
             else:
                 QMessageBox.critical(self, "Error", error_message)
         else:
-            reply = QMessageBox.warning(
-                self, "Activar Contraseña Maestra",
+            text = (
                 "Vas a añadir una capa extra de cifrado a las claves secretas "
                 "guardadas.\n\nSe te pedirá esta contraseña cada vez que abras "
                 "S3Manager. Si la olvidas, no hay forma de recuperarla: tendrás "
                 "que volver a introducir tus credenciales AWS manualmente.\n\n"
-                "Importante para aws-cli y otras herramientas: mientras esté "
-                "activa, S3Manager no escribe la clave secreta real en "
-                "~/.aws/credentials (deja un marcador). aws-cli, los SDK y "
-                "otras herramientas que lean ese archivo fallarán con "
-                "SignatureDoesNotMatch para los perfiles de S3Manager. "
-                "Para usarlas, exporta las claves como variables de entorno "
-                "(AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) o desactiva la "
-                "contraseña maestra.\n\n¿Quieres continuar?",
+            )
+            if not IS_SANDBOXED:
+                text += (
+                    "Importante para aws-cli y otras herramientas: mientras "
+                    "esté activa, S3Manager no escribe la clave secreta real "
+                    "en ~/.aws/credentials (deja un marcador). aws-cli, los "
+                    "SDK y otras herramientas que lean ese archivo fallarán "
+                    "con SignatureDoesNotMatch para los perfiles de "
+                    "S3Manager. Para usarlas, exporta las claves como "
+                    "variables de entorno (AWS_ACCESS_KEY_ID / "
+                    "AWS_SECRET_ACCESS_KEY) o desactiva la contraseña "
+                    "maestra.\n\n"
+                )
+            text += "¿Quieres continuar?"
+            reply = QMessageBox.warning(
+                self, "Activar Contraseña Maestra", text,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -1279,13 +1353,16 @@ Nota: Puedes cambiarlas más tarde desde el menú Archivo → Configuración AWS
             success, error_message = AWSCredentialsManager.setup_master_password(password)
             if success:
                 self.log_tab.add_log("Contraseña maestra activada", "success")
-                QMessageBox.information(
-                    self, "Activada",
+                text = (
                     "La contraseña maestra se ha activado y las credenciales "
-                    "guardadas ya están protegidas.\n\nRecuerda: aws-cli ya "
-                    "no podrá usar los perfiles de S3Manager desde "
-                    "~/.aws/credentials."
+                    "guardadas ya están protegidas."
                 )
+                if not IS_SANDBOXED:
+                    text += (
+                        "\n\nRecuerda: aws-cli ya no podrá usar los perfiles "
+                        "de S3Manager desde ~/.aws/credentials."
+                    )
+                QMessageBox.information(self, "Activada", text)
             else:
                 QMessageBox.critical(self, "Error", error_message)
 
@@ -1552,8 +1629,7 @@ class AWSProfilesDialog(QDialog):
 
         try:
             blob = AWSCredentialsManager.export_profiles(password)
-            with open(file_path, 'wb') as f:
-                f.write(blob)
+            write_user_file(file_path, blob)
             QMessageBox.information(
                 self, "Exportación Completada",
                 f"Perfiles exportados y cifrados en:\n{file_path}\n\n"
@@ -1593,8 +1669,7 @@ class AWSProfilesDialog(QDialog):
             overwrite = reply == QMessageBox.StandardButton.Yes
 
         try:
-            with open(file_path, 'rb') as f:
-                blob = f.read()
+            blob = read_user_file(file_path)
         except Exception as e:
             QMessageBox.critical(self, "Error al Leer el Archivo", str(e))
             return

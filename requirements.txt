@@ -1,4 +1,4 @@
-PySide6>=6.5.0
+PySide6==6.11.*  # fijado: las descargas en sandbox dependen del SecurityScopedFileEngine de Qt
 boto3>=1.26.0
 botocore>=1.29.0
 pyinstaller>=5.0.0
