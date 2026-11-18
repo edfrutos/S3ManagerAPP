@@ -102,3 +102,7 @@ docs/TESTING_FINAL_REPORT.md
 docs/TESTING_SUMMARY_v1.1.md
 # Imagen suelta no usada por la app ni el build
 S3Manager.png
+
+# Paquete Mac App Store y perfiles de aprovisionamiento
+*.pkg
+*.provisionprofile

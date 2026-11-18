@@ -12,6 +12,13 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+# En la .app empaquetada, la libssl incluida (de Homebrew) buscaría su
+# configuración en /opt/homebrew/etc/openssl@3/openssl.cnf: fuera del
+# bundle y denegado con App Sandbox. No se usa ninguna opción de ese
+# archivo, así que se apunta a uno vacío. Debe ir antes de importar ssl.
+if getattr(sys, "frozen", False):
+    os.environ.setdefault("OPENSSL_CONF", os.devnull)
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, 
     QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,
@@ -1684,7 +1691,13 @@ class AWSProfilesDialog(QDialog):
 def main():
     """Función principal de la aplicación"""
     app = QApplication(sys.argv)
-    
+
+    # Los estilos de la app fijan fondos claros pero no el color del
+    # texto: en modo oscuro el texto saldría blanco sobre blanco. Se
+    # fuerza el esquema claro (Qt >= 6.8) en todas las variantes.
+    if hasattr(app.styleHints(), "setColorScheme"):
+        app.styleHints().setColorScheme(Qt.ColorScheme.Light)
+
     # Configurar aplicación
     app.setApplicationName("S3 Manager")
     app.setApplicationVersion(__version__)

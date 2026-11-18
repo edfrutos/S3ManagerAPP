@@ -47,21 +47,21 @@ def is_macho(path):
         return False
 
 
-def codesign(path, identity, entitlements=False):
+def codesign(path, identity, entitlements=None):
     cmd = [
         "codesign", "--force", "--timestamp", "--options", "runtime",
         "--sign", identity,
     ]
     if entitlements:
-        cmd += ["--entitlements", str(ENTITLEMENTS)]
+        cmd += ["--entitlements", str(entitlements)]
     run(cmd + [str(path)], stdout=subprocess.DEVNULL)
 
 
-def sign_app(identity):
+def sign_app(identity, app=APP, entitlements=ENTITLEMENTS):
     """Firma de dentro hacia fuera: binarios sueltos, luego cada
-    .framework y por último la app. Se ignoran los symlinks (se firma
-    el archivo real una sola vez)."""
-    contents = APP / "Contents"
+    .framework y por último la app (solo esta lleva entitlements). Se
+    ignoran los symlinks (se firma el archivo real una sola vez)."""
+    contents = app / "Contents"
 
     binaries = [
         p for p in contents.rglob("*")
@@ -84,10 +84,10 @@ def sign_app(identity):
         codesign(fw, identity)
 
     print("🔏 Firmando la aplicación...")
-    codesign(APP, identity, entitlements=True)
+    codesign(app, identity, entitlements=entitlements)
 
     run(["codesign", "--verify", "--deep", "--strict", "--verbose=2",
-         str(APP)])
+         str(app)])
 
 
 def main():
