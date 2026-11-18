@@ -9,11 +9,12 @@ romper la versión de descarga directa (Developer ID, `make release`).
 |---|---|
 | Certificados "3rd Party Mac Developer Application" e "Installer" | ✅ en el llavero (el de Installer está **duplicado**: firmar por SHA-1) |
 | App registrada en App Store Connect (`com.edefrutos.s3manager`) | ✅ |
-| Perfil de aprovisionamiento "Mac App Store" | ❌ crear en developer.apple.com |
-| App Sandbox | ❌ `entitlements.plist` vacío |
-| Escritura fuera del contenedor | ❌ `~/.aws` (sync aws-cli) |
-| `.pkg` firmado con productbuild | ❌ |
-| Info.plist: `LSApplicationCategoryType`, `ITSAppUsesNonExemptEncryption` | ❌ |
+| Perfil de aprovisionamiento "Mac App Store" | ✅ «S3Manager», ligado a Apple Distribution (caduca 12-09-2027) |
+| App Sandbox | ✅ `entitlements-mas.plist` |
+| Escritura fuera del contenedor | ✅ en sandbox no se sincroniza `~/.aws` |
+| `.pkg` firmado con productbuild | ✅ `make mas` |
+| Info.plist: `LSApplicationCategoryType`, `ITSAppUsesNonExemptEncryption` | ✅ |
+| Prueba en TestFlight | ✅ versión 1.2.4 (18-11-2026) |
 | `LSMinimumSystemVersion` | ✅ 12.0 (mínimo que la MAS acepta para builds solo arm64) |
 
 ## Qué cambia dentro del sandbox
@@ -107,7 +108,7 @@ Pendiente de esta fase: `openssl.cnf` (se revisa en la fase 2).
   Sin impacto en la GUI.
 
 ### Fase 2: build MAS (`build_mas.py` + `make mas`) ✅
-Hecho (rama `feat/build-mas`):
+Hecho (rama `feat/build-mas`, fusionada en `master` con la PR #10):
 - `make mas` genera `S3Manager-mas.pkg` firmado.
   - Variables necesarias: `MAS_APP_IDENTITY`, `MAS_INSTALLER_IDENTITY` y `MAS_PROFILE`.
   - Opcional: `BUILD_NUMBER`.
@@ -151,7 +152,7 @@ Plan original:
 - **Subida con la app Transporter** (lo más sencillo). Alternativa: `xcrun altool --upload-app`
   con API key; confirmar que sigue admitido para subidas.
 
-### Fase 3: pruebas
+### Fase 3: pruebas ✅ (falta comprobar `make release`)
 Primeros resultados en TestFlight (17-11-2026):
 - La app de TestFlight se instaló como `/Applications/S3Manager 2.app`, porque ya existía
   una `S3Manager.app` (build 1.2.0 sin firmar ni sandbox). Las dos tienen el mismo bundle id,
@@ -160,14 +161,18 @@ Primeros resultados en TestFlight (17-11-2026):
   Developer ID en el contenedor compartido se resuelven bien con la firma de TestFlight.
 - Diagnóstico de los permisos del sandbox:
   `QT_LOGGING_RULES="qt.core.io.security-scoped-fileengine=true" "<app>/Contents/MacOS/S3Manager"`.
-- Modo oscuro: el texto salía invisible (los estilos fijan fondos claros pero no el color del
-  texto). Se ha corregido forzando el esquema claro con
-  `QStyleHints.setColorScheme(Qt.ColorScheme.Light)`. Comprobado desde el código fuente con
-  el sistema en modo oscuro (18-11-2026). Falta comprobarlo en la build siguiente de TestFlight.
-- Tema configurable (18-11-2026): sustituye al modo claro forzado. `theme.py` tiene una hoja de
-  estilo clara y otra oscura, y el menú Ver > Apariencia permite elegir Sistema, Clara u Oscura
-  (se guarda con QSettings, dentro del contenedor del sandbox). Falta probarlo en macOS y en
-  TestFlight.
+- Modo oscuro: el texto salía invisible porque los estilos fijan fondos claros pero no el
+  color del texto. En la build 2 (1.2.3) se forzó el esquema claro con
+  `QStyleHints.setColorScheme(Qt.ColorScheme.Light)`, y funcionó en TestFlight (18-11-2026).
+- Tema configurable (versión 1.2.4): sustituye al modo claro forzado. `theme.py` tiene una
+  hoja de estilo clara y otra oscura, y el menú Ver > Apariencia permite elegir Sistema,
+  Clara u Oscura. La elección se guarda con QSettings, dentro del contenedor del sandbox.
+
+Resultados de la versión 1.2.4 en TestFlight (18-11-2026): todo correcto.
+- Tema en los tres modos. El modo sistema cambia solo con la apariencia de macOS, y el tema
+  elegido se conserva al reiniciar.
+- Operaciones con sandbox: listar buckets, descargar a una carpeta, borrar archivos,
+  verificar permisos, y exportar e importar perfiles.
 
 - **Local:** variante sandbox firmada con Developer ID (fase 0), con todas las operaciones:
   - Listar, crear y borrar bucket.
@@ -209,6 +214,5 @@ Primeros resultados en TestFlight (17-11-2026):
 Unos 3–4 días de trabajo: fase 0 ½ día, fase 1 1 día, fase 2 1 día, fase 3 1 día
 (más las esperas de TestFlight), fase 4 ½ día.
 
-Bloqueante externo: crear el perfil "Mac App Store" en developer.apple.com
-(Certificates, Identifiers & Profiles → Profiles → + → Mac App Store Connect →
-App ID `com.edefrutos.s3manager` → certificado 3rd Party Mac Developer Application).
+Bloqueante externo (resuelto): el perfil "Mac App Store" ya existe en developer.apple.com
+(«S3Manager», ligado al certificado Apple Distribution; ver fase 2).
