@@ -26,8 +26,10 @@ def create_app_bundle():
     build_dir.mkdir(exist_ok=True)
     
     # Configuración de PyInstaller
+    # Se lanza con el mismo Python (p. ej. venv310) aunque el entorno no
+    # esté activado y `pyinstaller` no esté en el PATH.
     pyinstaller_args = [
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--name=S3Manager",
         "--windowed",  # No mostrar consola
         "--onedir",    # Un directorio con todas las dependencias
@@ -252,7 +254,7 @@ def main():
     
     # Verificar PyInstaller
     try:
-        subprocess.run(["pyinstaller", "--version"], check=True, capture_output=True)
+        subprocess.run([sys.executable, "-m", "PyInstaller", "--version"], check=True, capture_output=True)
         print("✅ PyInstaller disponible")
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("❌ PyInstaller no encontrado")
