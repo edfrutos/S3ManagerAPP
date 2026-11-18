@@ -14,7 +14,7 @@ romper la versión de descarga directa (Developer ID, `make release`).
 | Escritura fuera del contenedor | ❌ `~/.aws` (sync aws-cli) |
 | `.pkg` firmado con productbuild | ❌ |
 | Info.plist: `LSApplicationCategoryType`, `ITSAppUsesNonExemptEncryption` | ❌ |
-| `LSMinimumSystemVersion` | ⚠️ 10.15, pero el binario es solo arm64 (requiere 11.0) |
+| `LSMinimumSystemVersion` | ✅ 12.0 (mínimo que la MAS acepta para builds solo arm64) |
 
 ## Qué cambia dentro del sandbox
 
@@ -106,7 +106,30 @@ Pendiente de esta fase: `openssl.cnf` (se revisa en la fase 2).
 - `diagnose_s3_permissions.py:43` solo informa de si existe `~/.aws/credentials` (CLI).
   Sin impacto en la GUI.
 
-### Fase 2: build MAS (`build_mas.py` + `make mas`)
+### Fase 2: build MAS (`build_mas.py` + `make mas`) ✅
+Hecho (rama `feat/build-mas`):
+- `make mas` genera `S3Manager-mas.pkg` firmado.
+  - Variables necesarias: `MAS_APP_IDENTITY`, `MAS_INSTALLER_IDENTITY` y `MAS_PROFILE`.
+  - Opcional: `BUILD_NUMBER`.
+- Perfil existente «S3Manager» (14-11-2026, caduca 12-09-2027):
+  - Está ligado al certificado **Apple Distribution**, así que la app se firma con
+    él, no con «3rd Party Mac Developer Application».
+  - Está guardado fuera del repo.
+- `.pkg` firmado con «3rd Party Mac Developer Installer» `8228DCD2…`, que caduca en
+  2027-10.
+- Transporter (1.er intento) rechazó dos cosas, ya corregidas:
+  - `CFBundleDocumentTypes` sin `LSHandlerRank`: se ha quitado la declaración (la app
+    no abre archivos).
+  - Una build solo arm64 exige `LSMinimumSystemVersion` 12.0 o superior: se ha subido
+    a 12.0 en las dos variantes.
+  - `CFBundleVersion` admite como mucho tres enteros (`1.2.3.1` no vale): se usa un
+    contador entero (`BUILD_NUMBER=1`, `2`…), y `build_mas.py` valida el formato.
+- `openssl.cnf`: resuelto con `OPENSSL_CONF=/dev/null` en la `.app` (sin denegación
+  en sandbox).
+- Pospuesto: reducir el bundle quitando módulos de Qt. Hay enlaces simbólicos en
+  `Resources/` y `Frameworks/`, así que es frágil para unos 25 MB de 133 MB.
+
+Plan original:
 - **Info.plist (ambas variantes):**
   - `LSApplicationCategoryType = public.app-category.developer-tools`
   - `ITSAppUsesNonExemptEncryption = false`
@@ -129,6 +152,23 @@ Pendiente de esta fase: `openssl.cnf` (se revisa en la fase 2).
   con API key; confirmar que sigue admitido para subidas.
 
 ### Fase 3: pruebas
+Primeros resultados en TestFlight (17-11-2026):
+- La app de TestFlight se instaló como `/Applications/S3Manager 2.app`, porque ya existía
+  una `S3Manager.app` (build 1.2.0 sin firmar ni sandbox). Las dos tienen el mismo bundle id,
+  así que es fácil abrir la que no es. Hay que borrar la antigua antes de probar.
+- Las descargas a Descargas funcionan. Los marcadores de Qt que dejó la build sandbox
+  Developer ID en el contenedor compartido se resuelven bien con la firma de TestFlight.
+- Diagnóstico de los permisos del sandbox:
+  `QT_LOGGING_RULES="qt.core.io.security-scoped-fileengine=true" "<app>/Contents/MacOS/S3Manager"`.
+- Modo oscuro: el texto salía invisible (los estilos fijan fondos claros pero no el color del
+  texto). Se ha corregido forzando el esquema claro con
+  `QStyleHints.setColorScheme(Qt.ColorScheme.Light)`. Comprobado desde el código fuente con
+  el sistema en modo oscuro (18-11-2026). Falta comprobarlo en la build siguiente de TestFlight.
+- Tema configurable (18-11-2026): sustituye al modo claro forzado. `theme.py` tiene una hoja de
+  estilo clara y otra oscura, y el menú Ver > Apariencia permite elegir Sistema, Clara u Oscura
+  (se guarda con QSettings, dentro del contenedor del sandbox). Falta probarlo en macOS y en
+  TestFlight.
+
 - **Local:** variante sandbox firmada con Developer ID (fase 0), con todas las operaciones:
   - Listar, crear y borrar bucket.
   - Descargar a una carpeta elegida.

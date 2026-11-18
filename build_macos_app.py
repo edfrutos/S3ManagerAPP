@@ -26,8 +26,10 @@ def create_app_bundle():
     build_dir.mkdir(exist_ok=True)
     
     # Configuración de PyInstaller
+    # Se lanza con el mismo Python (p. ej. venv310) aunque el entorno no
+    # esté activado y `pyinstaller` no esté en el PATH.
     pyinstaller_args = [
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--name=S3Manager",
         "--windowed",  # No mostrar consola
         "--onedir",    # Un directorio con todas las dependencias
@@ -109,28 +111,19 @@ def create_info_plist(app_path):
     <key>CFBundleVersion</key>
     <string>__APP_VERSION__</string>
     <key>LSMinimumSystemVersion</key>
-    <string>10.15.0</string>
+    <string>12.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.developer-tools</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>© 2025 EDF Developer</string>
+    <string>© 2026 Eugenio de Frutos Sánchez</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSRequiresAquaSystemAppearance</key>
     <false/>
-    <key>CFBundleDocumentTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleTypeExtensions</key>
-            <array>
-                <string>s3</string>
-            </array>
-            <key>CFBundleTypeName</key>
-            <string>S3 Configuration</string>
-            <key>CFBundleTypeRole</key>
-            <string>Editor</string>
-        </dict>
-    </array>
 </dict>
 </plist>""".replace("__APP_VERSION__", __version__)
     
@@ -261,7 +254,7 @@ def main():
     
     # Verificar PyInstaller
     try:
-        subprocess.run(["pyinstaller", "--version"], check=True, capture_output=True)
+        subprocess.run([sys.executable, "-m", "PyInstaller", "--version"], check=True, capture_output=True)
         print("✅ PyInstaller disponible")
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("❌ PyInstaller no encontrado")
