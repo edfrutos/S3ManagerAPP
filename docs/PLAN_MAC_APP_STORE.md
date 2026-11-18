@@ -164,6 +164,10 @@ Primeros resultados en TestFlight (17-11-2026):
   texto). Se ha corregido forzando el esquema claro con
   `QStyleHints.setColorScheme(Qt.ColorScheme.Light)`. Comprobado desde el código fuente con
   el sistema en modo oscuro (18-11-2026). Falta comprobarlo en la build siguiente de TestFlight.
+- Tema configurable (18-11-2026): sustituye al modo claro forzado. `theme.py` tiene una hoja de
+  estilo clara y otra oscura, y el menú Ver > Apariencia permite elegir Sistema, Clara u Oscura
+  (se guarda con QSettings, dentro del contenedor del sandbox). Falta probarlo en macOS y en
+  TestFlight.
 
 - **Local:** variante sandbox firmada con Developer ID (fase 0), con todas las operaciones:
   - Listar, crear y borrar bucket.

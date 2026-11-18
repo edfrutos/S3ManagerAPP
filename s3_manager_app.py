@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import (
     Qt, QThread, Signal as pyqtSignal, QTimer, QSize, QFile, QIODevice,
 )
-from PySide6.QtGui import QIcon, QFont, QPixmap, QAction
+from PySide6.QtGui import QIcon, QFont, QPixmap, QAction, QActionGroup
 
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
@@ -45,6 +45,7 @@ from diagnose_s3_permissions import (
 # Importar gestor de credenciales
 from aws_credentials_manager import AWSCredentialsManager, IS_SANDBOXED
 from app_version import __version__
+import theme
 
 
 # ----------------------------------------------------------------------
@@ -426,16 +427,7 @@ class BucketTab(QWidget):
         self.bucket_info.setMinimumHeight(200)
         self.bucket_info.setMaximumHeight(300)
         self.bucket_info.setReadOnly(True)
-        self.bucket_info.setStyleSheet("""
-            QTextEdit {
-                font-family: Monaco, monospace;
-                font-size: 12px;
-                line-height: 1.5;
-                padding: 10px;
-                background-color: #f8f9fa;
-                border-radius: 6px;
-            }
-        """)
+        self.bucket_info.setObjectName("bucketInfo")  # estilo en theme.py
         info_layout.addWidget(self.bucket_info)
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
@@ -456,7 +448,7 @@ class BucketTab(QWidget):
         # Botón para eliminar el bucket seleccionado
         self.delete_bucket_btn = QPushButton("Eliminar Bucket")
         self.delete_bucket_btn.setEnabled(False)
-        self.delete_bucket_btn.setStyleSheet("color: red;")
+        self.delete_bucket_btn.setProperty("danger", True)
         self.delete_bucket_btn.clicked.connect(self.confirm_delete_bucket)
         button_layout.addWidget(self.delete_bucket_btn)
         
@@ -680,7 +672,7 @@ class FilesTab(QWidget):
         self.delete_btn = QPushButton("🗑️ Eliminar Seleccionados")
         self.delete_btn.clicked.connect(self.delete_selected)
         self.delete_btn.setEnabled(False)
-        self.delete_btn.setStyleSheet("QPushButton { background-color: #ff6b6b; color: white; }")
+        self.delete_btn.setProperty("danger", True)
         action_layout.addWidget(self.delete_btn)
         
         action_layout.addStretch()
@@ -843,18 +835,19 @@ class LogTab(QWidget):
         
         if log_type == "error":
             prefix = "❌"
-            color = "red"
+            color = theme.LOG_COLORS["error"]
         elif log_type == "warning":
             prefix = "⚠️"
-            color = "orange"
+            color = theme.LOG_COLORS["warning"]
         elif log_type == "success":
             prefix = "✅"
-            color = "green"
+            color = theme.LOG_COLORS["success"]
         else:
             prefix = "ℹ️"
-            color = "blue"
+            color = theme.LOG_COLORS["info"]
         
-        log_entry = f'<span style="color: gray;">[{timestamp}]</span> <span style="color: {color};">{prefix} {message}</span><br>'
+        ts_color = theme.LOG_COLORS["timestamp"]
+        log_entry = f'<span style="color: {ts_color};">[{timestamp}]</span> <span style="color: {color};">{prefix} {message}</span><br>'
         self.log_text.insertHtml(log_entry)
         
         # Scroll al final
@@ -942,9 +935,6 @@ class S3ManagerApp(QMainWindow):
         # Barra de herramientas: selector de perfil AWS activo
         self.create_profile_toolbar()
 
-        # Aplicar estilo macOS
-        self.apply_macos_style()
-
     def create_menu(self):
         """Crea el menú de la aplicación"""
         menubar = self.menuBar()
@@ -970,6 +960,20 @@ class S3ManagerApp(QMainWindow):
         quit_action = QAction('Salir', self)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
+
+        # Menú Ver > Apariencia
+        view_menu = menubar.addMenu('Ver')
+        appearance_menu = view_menu.addMenu('Apariencia')
+        self.theme_group = QActionGroup(self)
+        self.theme_group.setExclusive(True)
+        current_theme = theme.load_theme_preference()
+        for mode, label in theme.THEME_LABELS.items():
+            action = QAction(label, self, checkable=True)
+            action.setData(mode)
+            action.setChecked(mode == current_theme)
+            self.theme_group.addAction(action)
+            appearance_menu.addAction(action)
+        self.theme_group.triggered.connect(self.on_theme_selected)
 
         # Menú Ayuda
         help_menu = menubar.addMenu('Ayuda')
@@ -1019,68 +1023,14 @@ class S3ManagerApp(QMainWindow):
             self.log_tab.add_log(f"Error activando el perfil '{profile_name}': {error_message}", "error")
             self.status_bar.showMessage("❌ Error de perfil AWS")
     
-    def apply_macos_style(self):
-        """Aplica estilo similar a macOS"""
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #f5f5f5;
-            }
-            QTabWidget::pane {
-                border: 1px solid #c0c0c0;
-                background-color: white;
-                border-radius: 8px;
-            }
-            QTabBar::tab {
-                background-color: #e0e0e0;
-                padding: 8px 16px;
-                margin-right: 2px;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-            }
-            QTabBar::tab:selected {
-                background-color: white;
-                border-bottom: 2px solid #007AFF;
-            }
-            QPushButton {
-                background-color: #007AFF;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #0056CC;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-                color: #666666;
-            }
-            QListWidget {
-                border: 1px solid #d0d0d0;
-                border-radius: 6px;
-                background-color: white;
-            }
-            QTableWidget {
-                border: 1px solid #d0d0d0;
-                border-radius: 6px;
-                background-color: white;
-                gridline-color: #e0e0e0;
-            }
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #d0d0d0;
-                border-radius: 6px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-            }
-        """)
-    
+    def on_theme_selected(self, action):
+        """Aplica y guarda el tema elegido en Ver > Apariencia."""
+        mode = action.data()
+        theme.save_theme_preference(mode)
+        theme.apply_theme(QApplication.instance(), mode)
+        self.log_tab.add_log(
+            f"Apariencia: {theme.THEME_LABELS[mode]}", "info")
+
     def setup_worker(self):
         """Configura las conexiones del worker thread"""
         self.worker.progress_updated.connect(self.update_progress)
@@ -1482,19 +1432,6 @@ class AWSProfilesDialog(QDialog):
         save_btn = QPushButton("💾 Guardar Perfil")
         save_btn.clicked.connect(self.save_profile)
         save_btn.setDefault(True)
-        save_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #007AFF;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #0056CC;
-            }
-        """)
         button_layout.addWidget(save_btn)
 
         right_layout.addLayout(button_layout)
@@ -1692,16 +1629,13 @@ def main():
     """Función principal de la aplicación"""
     app = QApplication(sys.argv)
 
-    # Los estilos de la app fijan fondos claros pero no el color del
-    # texto: en modo oscuro el texto saldría blanco sobre blanco. Se
-    # fuerza el esquema claro (Qt >= 6.8) en todas las variantes.
-    if hasattr(app.styleHints(), "setColorScheme"):
-        app.styleHints().setColorScheme(Qt.ColorScheme.Light)
-
-    # Configurar aplicación
+    # Configurar aplicación (los nombres los usa QSettings)
     app.setApplicationName("S3 Manager")
     app.setApplicationVersion(__version__)
     app.setOrganizationName("Sistema de Catálogo de Tablas")
+
+    # Tema (claro / oscuro / sistema): ver theme.py y Ver > Apariencia
+    theme.apply_theme(app, theme.load_theme_preference())
     
     # Crear y mostrar ventana principal
     window = S3ManagerApp()
