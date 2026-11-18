@@ -30,7 +30,7 @@
   solo viajan entre el Mac del usuario y su propia cuenta de AWS; Apple no considera
   "recopilación" los datos que no salen hacia el desarrollador ni terceros que él controle.
 
-## Versión 1.2.2
+## Versión 1.2.4 (primera versión en la Mac App Store)
 **Texto promocional (máx. 170)**
 Lista, descarga y borra archivos de tus buckets de Amazon S3 sin consola ni línea de comandos. Varios perfiles de AWS y claves protegidas en el Llavero.
 
@@ -56,7 +56,9 @@ PERFILES Y SEGURIDAD
 • Las claves secretas se guardan en el Llavero de macOS.
 • Contraseña maestra opcional: tus claves quedan cifradas y la app las pide al abrirse.
 • Exporta e importa perfiles en un archivo cifrado con contraseña.
-• Compatible con aws-cli: los perfiles se sincronizan con ~/.aws.
+
+INTERFAZ
+• Tema claro, oscuro o el del sistema, desde Ver > Apariencia.
 
 PRIVACIDAD
 S3Manager no tiene servidor propio, no requiere cuenta con el desarrollador y no incluye publicidad ni analítica. Solo se conecta a Amazon Web Services, con tus credenciales y para las operaciones que tú lanzas. Al arrancar no se conecta a nada.
@@ -72,13 +74,28 @@ aws,s3,bucket,amazon,cloud,almacenamiento,descargar,archivos,perfiles,credencial
 |---|---|
 | URL de soporte | https://efjdev.com/soporte/ |
 | URL de marketing | https://efjdev.com/s3manager/ |
-| Versión | 1.2.2 |
+| Versión | 1.2.4 |
 | Copyright | 2026 Eugenio de Frutos Sánchez |
 
 **Capturas de pantalla (macOS)**: 16:10, una de estas resoluciones: 1280×800, 1440×900,
-2560×1600 o 2880×1800. Mínimo 1, máximo 10. Sugeridas: pestaña Buckets con lista,
-pestaña Archivos con contenido, resultado de Verificar permisos, diálogo de perfiles AWS,
-diálogo de contraseña maestra. Sin claves reales visibles.
+2560×1600 o 2880×1800. Mínimo 1, máximo 10. Sin claves reales visibles: usar el perfil del
+bucket de revisión `s3manager-review-edf`.
+
+Sugeridas (en este orden):
+1. Pestaña Buckets con la lista y la información del bucket.
+2. Pestaña Archivos con contenido y algunos seleccionados.
+3. Resultado de Verificar permisos.
+4. Diálogo de perfiles AWS (con el campo de la clave secreta vacío o en puntos).
+5. La misma vista de la captura 1 en tema oscuro (Ver > Apariencia > Oscura).
+
+Procedimiento en una pantalla Retina (sale a 2880×1800):
+1. Reducir la ventana de S3Manager a menos de 1440×900 puntos.
+2. Capturar solo la ventana, sin sombra; después hacer clic en la ventana:
+   `screencapture -o -w ~/Desktop/s3m-1.png`
+3. Centrarla en un lienzo 16:10 del color de fondo de la app:
+   `sips -p 1800 2880 --padColor F5F5F5 ~/Desktop/s3m-1.png --out ~/Desktop/s3m-1-16x10.png`
+   (tema oscuro: `--padColor 1E1E1E`).
+4. Comprobar el tamaño: `sips -g pixelWidth -g pixelHeight ~/Desktop/s3m-1-16x10.png`.
 
 ## Información para la revisión de la app
 - Requiere inicio de sesión: **Sí** (claves de AWS, no usuario/contraseña).
@@ -86,10 +103,14 @@ diálogo de contraseña maestra. Sin claves reales visibles.
   > S3Manager necesita credenciales de AWS para funcionar. Para la revisión hemos creado
   > un usuario IAM de prueba con acceso limitado a un único bucket de demostración:
   > Access Key ID: <AKIA…>  Secret Access Key: <…>  Región: eu-south-2  Bucket: s3manager-review-edf
-  > Pasos: abrir la app → Configurar credenciales → pegar las claves y escribir la región
-  > eu-south-2 → pulsar «Actualizar» en la pestaña Buckets → seleccionar el bucket →
-  > «Verificar permisos» / pestaña Archivos (descargar y borrar están permitidos; crear o
-  > borrar buckets no, y la app mostrará un error de permisos: es lo esperado).
+  > Pasos: al abrir la app por primera vez, aceptar la configuración de credenciales (o
+  > menú Archivo → Gestionar Perfiles AWS…) → dejar el perfil «default», pegar las dos
+  > claves y elegir la región eu-south-2 → «Guardar Perfil» → «Cerrar» → en la pestaña
+  > Buckets pulsar «Actualizar» → seleccionar el bucket → «Verificar Permisos» / «Ver
+  > Archivos» (descargar y borrar archivos están permitidos; crear o borrar buckets no, y
+  > la app mostrará un error de permisos: es lo esperado). Al descargar, macOS pide elegir
+  > la carpeta de destino, porque la app funciona con App Sandbox. El tema se cambia en
+  > Ver → Apariencia.
 - Usuario IAM: `s3manager`, política inline `S3ManagerReviewOnlyBucket` (ListAllMyBuckets +
   lectura/escritura/borrado solo en `s3manager-review-edf`). Las claves reales se pegan solo
   en App Store Connect, nunca en este archivo.
@@ -100,10 +121,35 @@ diálogo de contraseña maestra. Sin claves reales visibles.
 - La app usa HTTPS (boto3) y cifrado local estándar (Fernet/AES, PBKDF2) solo para proteger
   las credenciales del propio usuario. Normalmente encaja en la exención (cifrado estándar
   del sistema/autenticación y protección de datos del usuario). Confirmar en el cuestionario
-  de App Store Connect; si aplica, añadir `ITSAppUsesNonExemptEncryption = false` al Info.plist.
+  de App Store Connect. ✅ `ITSAppUsesNonExemptEncryption = false` ya está en el Info.plist,
+  así que App Store Connect no pregunta por cada build.
 
-## Bloqueos antes de poder subir una build a la Mac App Store
-- App Sandbox obligatorio: hoy la app escribe en ~/.aws y ~/.s3manager (fuera del contenedor).
-- Certificados "Apple Distribution"/"3rd Party Mac Developer Application" (ya existen) y
-  "3rd Party Mac Developer Installer" (falta) + perfil de aprovisionamiento Mac App Store.
-- Empaquetado .pkg con productbuild y subida con Transporter o `xcrun altool`/`notarytool`.
+## Bloqueos antes de poder subir una build a la Mac App Store (resueltos)
+Resueltos en la versión 1.2.4 (ver `docs/PLAN_MAC_APP_STORE.md`):
+- App Sandbox: en sandbox no se escribe en `~/.aws`, y `~/.s3manager` queda dentro del
+  contenedor.
+- Certificados: Apple Distribution (con el perfil «S3Manager») y 3rd Party Mac Developer
+  Installer.
+- Empaquetado: `make mas` genera el `.pkg`, que se sube con Transporter.
+
+## Política de privacidad (efjdev.com/privacidad): texto propuesto para S3Manager
+Sustituye al segundo párrafo de la sección «S3Manager»:
+
+> Tus claves secretas se guardan en el Llavero de tu Mac; si activas la contraseña maestra,
+> se guardan además cifradas con ella. Los datos sin secretos (nombres de perfil, región,
+> perfil activo, tema elegido) se guardan en tu equipo, y los archivos que descargas van a la
+> carpeta que eliges. Todo ello permanece en tu Mac.
+>
+> **Versión de la Mac App Store.** Funciona dentro del entorno aislado de macOS (App
+> Sandbox): solo accede a las carpetas y archivos que eliges en el panel de macOS y no
+> escribe en ~/.aws, así que sus perfiles no se comparten con aws-cli. Para usar los mismos
+> perfiles en otro equipo o versión, expórtalos e impórtalos desde la app en un archivo
+> cifrado con contraseña.
+>
+> **Versión de descarga directa.** Para que puedas usar los mismos perfiles con aws-cli,
+> la app escribe tus perfiles en ~/.aws/credentials y ~/.aws/config: sin contraseña
+> maestra, la clave secreta queda en ese archivo en texto plano, como hace el propio
+> aws-cli; con contraseña maestra se escribe un marcador en su lugar. Los datos sin
+> secretos se guardan en ~/.s3manager/config.json.
+
+Actualizar también la fecha de «Última actualización».

@@ -152,7 +152,7 @@ Plan original:
 - **Subida con la app Transporter** (lo más sencillo). Alternativa: `xcrun altool --upload-app`
   con API key; confirmar que sigue admitido para subidas.
 
-### Fase 3: pruebas ✅ (falta comprobar `make release`)
+### Fase 3: pruebas ✅
 Primeros resultados en TestFlight (17-11-2026):
 - La app de TestFlight se instaló como `/Applications/S3Manager 2.app`, porque ya existía
   una `S3Manager.app` (build 1.2.0 sin firmar ni sandbox). Las dos tienen el mismo bundle id,
@@ -184,15 +184,24 @@ Resultados de la versión 1.2.4 en TestFlight (18-11-2026): todo correcto.
 - **TestFlight para macOS:** subir el `.pkg`, instalar desde TestFlight y repetir las
   pruebas. Es la única forma de probar la firma MAS real, porque una app firmada para
   distribución MAS no arranca fuera de la tienda.
-- Mantener `make release` (Developer ID) sin cambios y comprobarlo.
+- Mantener `make release` (Developer ID) sin cambios y comprobarlo. ✅ Comprobado con la
+  versión 1.2.4 (18-11-2026): DMG firmado, notarizado (Accepted), grapado y validado.
+  - Si `notarytool` responde 401 «Invalid credentials», la contraseña específica de app del
+    perfil `s3manager-notary` ya no vale (se anulan al cambiar la contraseña del Apple ID).
+    Genera otra en appleid.apple.com y vuelve a ejecutar
+    `xcrun notarytool store-credentials s3manager-notary --apple-id <correo> --team-id V29BTBRY6G`.
+    Si el DMG ya está firmado, no hace falta recompilar: `notarytool submit --wait`,
+    `stapler staple` y `stapler validate`.
 
 ### Fase 4: ficha y web
-- **Descripción MAS:** quitar "Compatible con aws-cli: los perfiles se sincronizan con
-  ~/.aws".
+Textos y pasos en `docs/APP_STORE_FICHA.md` (sección «Versión 1.2.4»).
+- **Descripción MAS:** sin "Compatible con aws-cli: los perfiles se sincronizan con
+  ~/.aws"; añadido el tema claro/oscuro. ✅ redactada
 - **Privacidad** (efjdev.com/privacidad): indicar que la versión de la App Store no escribe
-  en `~/.aws`.
-- **Capturas:** 16:10.
-- **Notas para el revisor:** ya preparadas (bucket `s3manager-review-edf`).
+  en `~/.aws`. Texto propuesto en la ficha.
+- **Capturas:** 16:10, a 2880×1800. Procedimiento en la ficha.
+- **Notas para el revisor:** actualizadas con los menús de la versión 1.2.4 (bucket
+  `s3manager-review-edf`).
 
 ## Riesgos y dudas abiertas
 
