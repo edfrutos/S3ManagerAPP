@@ -49,6 +49,7 @@ python3 test_s3_functionality.py
 - [Guía de Usuario](docs/README_S3_Manager_v1.1.md)
 - [Requisitos del Sistema](docs/SYSTEM_REQUIREMENTS_v1.1.md)
 - [Reporte de Pruebas](docs/TESTING_FINAL_REPORT_v1.1.md)
+- [Historial de Cambios v1.2.4](docs/CHANGELOG_v1.2.4.md)
 - [Historial de Cambios v1.2.3](docs/CHANGELOG_v1.2.3.md)
 - [Historial de Cambios v1.2.2](docs/CHANGELOG_v1.2.2.md)
 - [Historial de Cambios v1.2.1](docs/CHANGELOG_v1.2.1.md)
@@ -69,6 +70,7 @@ python3 test_s3_functionality.py
 - ✅ **Perfiles AWS múltiples**: Crea, cambia, exporta e importa perfiles (cifrados), compatibles con `~/.aws`.
 - ✅ **Contraseña maestra opcional**: Cifra los secrets guardados en el llavero.
 - ✅ **Interfaz gráfica moderna**: Diseñada para ser intuitiva y fácil de usar en macOS.
+- ✅ **Tema claro u oscuro**: Ver > Apariencia permite seguir la apariencia del sistema o fijar el tema claro u oscuro.
 - ✅ **Aplicación nativa de macOS**: Empaquetada como una aplicación `.app` con instalador `.dmg`.
 
 ## 📞 Soporte
@@ -78,5 +80,5 @@ Para problemas o sugerencias, revisa la documentación en `docs/`.
 ---
 
 **Desarrollado por**: EDF Developer
-**Versión**: 1.2.3
+**Versión**: 1.2.4
 **Licencia**: MIT
